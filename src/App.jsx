@@ -542,13 +542,13 @@ export default function App() {
 
                 <div className="panel">
                   <div className="field-label">When</div>
-                  <input
-                    className="input"
-                    type="datetime-local"
-                    value={startsAt}
-                    onChange={(e) => setStartsAt(e.target.value)}
-                    style={{ marginBottom: 12 }}
-                  />
+                  <div className="input dt-wrap" style={{ marginBottom: 12 }}>
+                    <input
+                      type="datetime-local"
+                      value={startsAt}
+                      onChange={(e) => setStartsAt(e.target.value)}
+                    />
+                  </div>
                   <select className="input" value={recurring} onChange={(e) => setRecurring(e.target.value)}>
                     <option value="">Doesn't repeat</option>
                     <option value="WEEKLY">Every week</option>

@@ -147,14 +147,29 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 
 .input:focus-visible { border-color: var(--a-500); }
 
-/* iOS Safari draws its own chrome for date/time value text that can ignore
-   a full pill radius once a value is set, making the border look like it
-   pokes out past the rounded corners. A smaller radius plus a stripped
-   native appearance keeps it inside the box. */
-input.input[type="datetime-local"] {
+/*
+ * iOS Safari ignores -webkit-appearance: none on datetime-local and always
+ * draws its own native compact control, which can be wider than the input's
+ * box and overflow past our border. So the border/padding live on a plain
+ * wrapper div (which Safari has no opinion about) and the bare input inside
+ * is unstyled and clipped, so anything Safari renders larger than expected
+ * is cropped instead of escaping the pill shape.
+ */
+.dt-wrap {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dt-wrap input[type="datetime-local"] {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 13px 18px;
+  font: inherit;
+  color: inherit;
   -webkit-appearance: none;
   appearance: none;
-  border-radius: var(--r-md);
 }
 
 /* --------------------------------------------------------------- signin */
