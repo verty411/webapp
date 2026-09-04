@@ -159,7 +159,7 @@ a { color: var(--a-700); text-underline-offset: 3px; }
   overflow: hidden;
 }
 
-.blob { position: absolute; border-radius: 50%; }
+.signin .blob { position: absolute; border-radius: 50%; }
 .blob-1 { width: 420px; height: 420px; background: var(--s-200); top: -170px; right: -160px; }
 .blob-2 { width: 230px; height: 230px; background: var(--a-200); bottom: 150px; left: -110px; }
 
