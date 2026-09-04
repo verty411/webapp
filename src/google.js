@@ -168,13 +168,13 @@ export async function listCalendars() {
   }));
 }
 
-/** Creates a 30-minute event carrying the video link. */
-export async function createEvent({ calendarId, title, link, startsAt, notes }) {
+/** Creates a 30-minute event carrying the video link. Optionally emails an invite to attendeeEmail. */
+export async function createEvent({ calendarId, title, link, startsAt, notes, attendeeEmail }) {
   const start = new Date(startsAt);
   const end = new Date(start.getTime() + 30 * 60 * 1000);
 
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`,
     {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -184,6 +184,7 @@ export async function createEvent({ calendarId, title, link, startsAt, notes }) 
         start: { dateTime: start.toISOString() },
         end: { dateTime: end.toISOString() },
         reminders: { useDefault: true },
+        ...(attendeeEmail ? { attendees: [{ email: attendeeEmail }] } : {}),
       }),
     }
   );

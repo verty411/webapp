@@ -31,6 +31,7 @@ export default function App() {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [startsAt, setStartsAt] = useState(defaultStart);
+  const [attendeeEmail, setAttendeeEmail] = useState('');
   const [eventLink, setEventLink] = useState(null);
 
   const [error, setError] = useState(null);
@@ -98,6 +99,7 @@ export default function App() {
         link: uploaded.link,
         startsAt,
         notes,
+        attendeeEmail: attendeeEmail.trim() || undefined,
       });
       setEventLink(event.link);
     } catch (e) {
@@ -216,6 +218,15 @@ export default function App() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="field">
+            Invite (optional)
+            <input
+              type="email"
+              value={attendeeEmail}
+              onChange={(e) => setAttendeeEmail(e.target.value)}
+              placeholder="name@example.com"
+            />
           </label>
           <div className="row">
             <button className="primary" disabled={!uploaded} onClick={handleAddToCalendar}>
