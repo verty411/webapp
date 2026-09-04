@@ -172,6 +172,27 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.add-friend {
+  display: flex;
+  gap: 0.5rem;
+  margin: -0.25rem 0 0.875rem;
+  flex-wrap: wrap;
+}
+
+.add-friend input {
+  flex: 1 1 8rem;
+  padding: 0.7rem 0.75rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--slate-1);
+  border-radius: 0.5rem;
+}
+
+.add-friend button {
+  flex: 0 0 auto;
+}
+
 .row button {
   flex: 1 1 9rem;
 }

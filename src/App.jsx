@@ -3,11 +3,13 @@ import {
   signIn,
   signOut,
   isSignedIn,
+  restoreSession,
   uploadVideo,
   listCalendars,
   createEvent,
   downloadInvite,
 } from './google';
+import { getFriends, addFriend, removeFriend } from './friends';
 import './App.css';
 
 function defaultStart() {
@@ -33,6 +35,12 @@ export default function App() {
   const [startsAt, setStartsAt] = useState(defaultStart);
   const [attendeeEmail, setAttendeeEmail] = useState('');
   const [eventLink, setEventLink] = useState(null);
+  const [inviteSent, setInviteSent] = useState(false);
+
+  const [friends, setFriends] = useState(() => getFriends());
+  const [addingFriend, setAddingFriend] = useState(false);
+  const [newFriendName, setNewFriendName] = useState('');
+  const [newFriendEmail, setNewFriendEmail] = useState('');
 
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -41,6 +49,18 @@ export default function App() {
   useEffect(() => {
     return () => previewUrl && URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
+
+  useEffect(() => {
+    if (!restoreSession()) return;
+    listCalendars()
+      .then((cals) => {
+        setSignedIn(true);
+        setCalendars(cals);
+      })
+      .catch(() => {
+        // Saved token turned out to be invalid (e.g. revoked elsewhere) — just stay signed out.
+      });
+  }, []);
 
   async function handleSignIn() {
     setError(null);
@@ -67,6 +87,7 @@ export default function App() {
     setFile(picked);
     setUploaded(null);
     setEventLink(null);
+    setInviteSent(false);
     setProgress(0);
     setError(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -99,12 +120,45 @@ export default function App() {
         link: uploaded.link,
         startsAt,
         notes,
-        attendeeEmail: attendeeEmail.trim() || undefined,
       });
       setEventLink(event.link);
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  async function handleSendInvite() {
+    setError(null);
+    try {
+      await createEvent({
+        calendarId: calendarId || 'primary',
+        title: title || 'Video',
+        link: uploaded.link,
+        startsAt,
+        notes,
+        attendeeEmail,
+      });
+      setInviteSent(true);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function handleSaveFriend() {
+    const name = newFriendName.trim();
+    const email = newFriendEmail.trim();
+    if (!name || !email) return;
+    setFriends(addFriend(name, email));
+    setAttendeeEmail(email);
+    setInviteSent(false);
+    setNewFriendName('');
+    setNewFriendEmail('');
+    setAddingFriend(false);
+  }
+
+  function handleRemoveFriend(email) {
+    setFriends(removeFriend(email));
+    if (attendeeEmail === email) setAttendeeEmail('');
   }
 
   async function handleCopy() {
@@ -220,17 +274,57 @@ export default function App() {
             </select>
           </label>
           <label className="field">
-            Invite (optional)
-            <input
-              type="email"
-              value={attendeeEmail}
-              onChange={(e) => setAttendeeEmail(e.target.value)}
-              placeholder="name@example.com"
-            />
+            Invite by email (optional)
+            <select
+              value={addingFriend ? '__new__' : attendeeEmail}
+              onChange={(e) => {
+                if (e.target.value === '__new__') {
+                  setAddingFriend(true);
+                } else {
+                  setAddingFriend(false);
+                  setAttendeeEmail(e.target.value);
+                  setInviteSent(false);
+                }
+              }}
+            >
+              <option value="">No one</option>
+              {friends.map((f) => (
+                <option key={f.email} value={f.email}>
+                  {f.name}
+                </option>
+              ))}
+              <option value="__new__">+ Add someone new</option>
+            </select>
           </label>
+          {addingFriend && (
+            <div className="add-friend">
+              <input
+                value={newFriendName}
+                onChange={(e) => setNewFriendName(e.target.value)}
+                placeholder="Nickname"
+              />
+              <input
+                type="email"
+                value={newFriendEmail}
+                onChange={(e) => setNewFriendEmail(e.target.value)}
+                placeholder="name@example.com"
+              />
+              <button type="button" className="secondary" onClick={handleSaveFriend}>
+                Save
+              </button>
+            </div>
+          )}
+          {attendeeEmail && !addingFriend && (
+            <button type="button" className="link-btn" onClick={() => handleRemoveFriend(attendeeEmail)}>
+              Forget {friends.find((f) => f.email === attendeeEmail)?.name || attendeeEmail}
+            </button>
+          )}
           <div className="row">
             <button className="primary" disabled={!uploaded} onClick={handleAddToCalendar}>
               Add to calendar
+            </button>
+            <button className="primary" disabled={!uploaded || !attendeeEmail} onClick={handleSendInvite}>
+              Email invite
             </button>
             <button
               className="secondary"
@@ -246,6 +340,11 @@ export default function App() {
               <a href={eventLink} target="_blank" rel="noreferrer">
                 Open the event
               </a>
+            </p>
+          )}
+          {inviteSent && (
+            <p className="quiet">
+              Invite emailed to {friends.find((f) => f.email === attendeeEmail)?.name || attendeeEmail}.
             </p>
           )}
         </li>

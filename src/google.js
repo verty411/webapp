@@ -8,9 +8,33 @@ const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
 ].join(' ');
 
+const STORAGE_KEY = 'videoshare_token';
+
 let tokenClient = null;
 let accessToken = null;
 let pending = null;
+
+function saveToken(token, expiresInSeconds) {
+  const expiresAt = Date.now() + expiresInSeconds * 1000;
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ token, expiresAt }));
+}
+
+function loadToken() {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const { token, expiresAt } = JSON.parse(raw);
+    // 60s buffer so a request doesn't start against a token that's about to expire.
+    if (Date.now() > expiresAt - 60_000) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return token;
+  } catch {
+    sessionStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
+}
 
 /** Wait for Google's script tag to finish loading. */
 function waitForGoogle() {
@@ -30,8 +54,9 @@ function waitForGoogle() {
 }
 
 /**
- * Opens the Google consent popup and stores the access token in memory.
- * The token lasts about an hour and is never written to disk.
+ * Opens the Google consent popup and stores the access token in memory
+ * plus sessionStorage, so a page refresh doesn't force a fresh sign-in.
+ * The token still lasts about an hour either way.
  */
 export async function signIn() {
   if (!CLIENT_ID) {
@@ -48,6 +73,7 @@ export async function signIn() {
           pending?.reject(new Error(response.error_description || response.error));
         } else {
           accessToken = response.access_token;
+          saveToken(response.access_token, response.expires_in);
           pending?.resolve(accessToken);
         }
         pending = null;
@@ -61,9 +87,18 @@ export async function signIn() {
   });
 }
 
+/** Restores a still-valid token saved by a previous signIn() in this tab. */
+export function restoreSession() {
+  const token = loadToken();
+  if (!token) return false;
+  accessToken = token;
+  return true;
+}
+
 export function signOut() {
   if (accessToken) window.google?.accounts?.oauth2?.revoke(accessToken, () => {});
   accessToken = null;
+  sessionStorage.removeItem(STORAGE_KEY);
 }
 
 export function isSignedIn() {
@@ -86,6 +121,7 @@ async function checkResponse(res, what) {
   }
   if (res.status === 401) {
     accessToken = null;
+    sessionStorage.removeItem(STORAGE_KEY);
     throw new Error('Your Google session expired. Sign in again.');
   }
   throw new Error(`${what} failed (${res.status}). ${detail}`);
