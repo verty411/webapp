@@ -208,9 +208,19 @@ export async function listCalendars() {
  * Creates a 30-minute event carrying the video link.
  * attendeeEmails invites those people; includeSelf also lists the organizer
  * as an attendee (rather than just the implicit owner) so "them + me" reads
- * the same as any other invite on the calendar.
+ * the same as any other invite on the calendar. recurrence is a plain
+ * frequency ('WEEKLY' | 'MONTHLY') that gets turned into an RRULE.
  */
-export async function createEvent({ calendarId, title, link, startsAt, notes, attendeeEmails = [], includeSelf = false }) {
+export async function createEvent({
+  calendarId,
+  title,
+  link,
+  startsAt,
+  notes,
+  attendeeEmails = [],
+  includeSelf = false,
+  recurrence,
+}) {
   const start = new Date(startsAt);
   const end = new Date(start.getTime() + 30 * 60 * 1000);
 
@@ -231,6 +241,7 @@ export async function createEvent({ calendarId, title, link, startsAt, notes, at
         end: { dateTime: end.toISOString() },
         reminders: { useDefault: true },
         ...(attendees.length ? { attendees } : {}),
+        ...(recurrence ? { recurrence: [`RRULE:FREQ=${recurrence}`] } : {}),
       }),
     }
   );

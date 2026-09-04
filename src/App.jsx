@@ -128,9 +128,9 @@ export default function App() {
   const [uploaded, setUploaded] = useState(null);
 
   const [title, setTitle] = useState('');
-  const [note, setNote] = useState('');
   const [audience, setAudience] = useState('them'); // 'them' | 'both' | 'me'
   const [startsAt, setStartsAt] = useState(defaultStart);
+  const [recurring, setRecurring] = useState(''); // '' | 'WEEKLY' | 'MONTHLY'
   const [calendars, setCalendars] = useState([]);
   const [calendarId, setCalendarId] = useState('');
 
@@ -186,10 +186,10 @@ export default function App() {
     setUploaded(null);
     setProgress(0);
     setTitle('');
-    setNote('');
     setSelected([]);
     setAudience('them');
     setStartsAt(defaultStart());
+    setRecurring('');
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
   }
@@ -221,20 +221,25 @@ export default function App() {
     }
   }
 
+  /** The one selected friend's own calendar, when we already have write access to it. */
+  function sharedCalendarFor(friend) {
+    if (!friend) return null;
+    return calendars.find((c) => c.id.toLowerCase() === friend.email.toLowerCase()) || null;
+  }
+
   async function send() {
     if (!uploaded) return;
     if (audience !== 'me' && selected.length === 0) return;
     setError(null);
-    const names = audience === 'me' ? [] : friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
     try {
       const event = await createEvent({
-        calendarId: calendarId || 'primary',
+        calendarId: sharedCal ? sharedCal.id : calendarId || 'primary',
         title: title || uploaded.name,
         link: uploaded.link,
         startsAt,
-        notes: note,
-        attendeeEmails: audience === 'me' ? [] : selected,
+        attendeeEmails: sharedCal || audience === 'me' ? [] : selected,
         includeSelf: audience === 'both',
+        recurrence: recurring || undefined,
       });
       setSent(
         saveSent([
@@ -244,6 +249,7 @@ export default function App() {
             link: uploaded.link,
             eventLink: event.link,
             to: names,
+            sharedCalendar: Boolean(sharedCal),
             when: new Date(startsAt).toISOString(),
             sentAt: new Date().toISOString(),
           },
@@ -278,6 +284,8 @@ export default function App() {
   }
 
   const names = audience === 'me' ? [] : friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
+  const soloFriend = audience === 'them' && selected.length === 1 ? friends.find((f) => f.email === selected[0]) : null;
+  const sharedCal = sharedCalendarFor(soloFriend);
   const upcoming = sent.filter((v) => v.when && new Date(v.when) > new Date()).sort((a, b) => new Date(a.when) - new Date(b.when))[0];
   const done = progress >= 100;
   const mb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
@@ -493,8 +501,6 @@ export default function App() {
                 <p>It's up in your Drive. Pick where this goes and when.</p>
                 {error && <p className="error" role="alert">{error}</p>}
 
-                <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ fontWeight: 600, fontSize: 16, marginBottom: 18 }} />
-
                 <div className="when-chips" style={{ marginBottom: 18 }}>
                   <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Just them</button>
                   <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Them + me</button>
@@ -526,6 +532,14 @@ export default function App() {
                   </div>
                 )}
 
+                {soloFriend && (
+                  <p className="muted" style={{ fontSize: 13, margin: '-8px 0 16px' }}>
+                    {sharedCal
+                      ? `Found ${soloFriend.name}'s shared calendar — this goes straight there, no email needed.`
+                      : `No shared calendar found for ${soloFriend.name} — we'll email them the invite instead.`}
+                  </p>
+                )}
+
                 <div className="panel">
                   <div className="field-label">When</div>
                   <input
@@ -535,8 +549,12 @@ export default function App() {
                     onChange={(e) => setStartsAt(e.target.value)}
                     style={{ marginBottom: 12 }}
                   />
-                  <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Say something (optional)" />
-                  {calendars.length > 1 && (
+                  <select className="input" value={recurring} onChange={(e) => setRecurring(e.target.value)}>
+                    <option value="">Doesn't repeat</option>
+                    <option value="WEEKLY">Every week</option>
+                    <option value="MONTHLY">Every month</option>
+                  </select>
+                  {audience !== 'them' && calendars.length > 1 && (
                     <select
                       className="input"
                       value={calendarId}
@@ -567,11 +585,13 @@ export default function App() {
                       hour: 'numeric',
                       minute: '2-digit',
                     });
-                    if (audience === 'me') return `It's on your calendar for ${when}.`;
+                    const repeats = recurring ? `, repeating ${recurring === 'WEEKLY' ? 'weekly' : 'monthly'}` : '';
+                    if (audience === 'me') return `It's on your calendar for ${when}${repeats}.`;
                     const who = listNames(names) || 'They';
+                    if (sharedCal) return `Added to ${who}'s shared calendar for ${when}${repeats} — no email needed.`;
                     return audience === 'both'
-                      ? `${who} and you will see it on the calendar for ${when}.`
-                      : `${who} will see it on the calendar for ${when}.`;
+                      ? `${who} and you will see it on the calendar for ${when}${repeats}.`
+                      : `${who} will get an emailed invite for ${when}${repeats}.`;
                   })()}
                 </p>
                 <div className="sheet-actions">
