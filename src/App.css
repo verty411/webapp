@@ -147,6 +147,16 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 
 .input:focus-visible { border-color: var(--a-500); }
 
+/* iOS Safari draws its own chrome for date/time value text that can ignore
+   a full pill radius once a value is set, making the border look like it
+   pokes out past the rounded corners. A smaller radius plus a stripped
+   native appearance keeps it inside the box. */
+input.input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: var(--r-md);
+}
+
 /* --------------------------------------------------------------- signin */
 
 .signin {
