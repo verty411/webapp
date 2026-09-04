@@ -1,122 +1,244 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useRef, useState } from 'react';
+import {
+  signIn,
+  signOut,
+  isSignedIn,
+  uploadVideo,
+  listCalendars,
+  createEvent,
+  downloadInvite,
+} from './google';
+import './App.css';
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function defaultStart() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setMinutes(0, 0, 0);
+  // datetime-local wants local time, not UTC
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default App
+export default function App() {
+  const [signedIn, setSignedIn] = useState(false);
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploaded, setUploaded] = useState(null);
+
+  const [calendars, setCalendars] = useState([]);
+  const [calendarId, setCalendarId] = useState('');
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [startsAt, setStartsAt] = useState(defaultStart);
+  const [eventLink, setEventLink] = useState(null);
+
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    return () => previewUrl && URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  async function handleSignIn() {
+    setError(null);
+    try {
+      await signIn();
+      setSignedIn(true);
+      setCalendars(await listCalendars());
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function handleSignOut() {
+    signOut();
+    setSignedIn(false);
+    setCalendars([]);
+    setUploaded(null);
+    setEventLink(null);
+  }
+
+  function handlePick(e) {
+    const picked = e.target.files?.[0];
+    if (!picked) return;
+    setFile(picked);
+    setUploaded(null);
+    setEventLink(null);
+    setProgress(0);
+    setError(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(picked));
+    if (!title) setTitle(`Video ${new Date().toLocaleDateString()}`);
+  }
+
+  async function handleUpload() {
+    if (!file) return;
+    setUploading(true);
+    setProgress(0);
+    setError(null);
+    try {
+      const result = await uploadVideo(file, title || file.name, setProgress);
+      setUploaded(result);
+    } catch (e) {
+      setError(e.message);
+      if (/session expired|Signed out/i.test(e.message)) setSignedIn(false);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleAddToCalendar() {
+    setError(null);
+    try {
+      const event = await createEvent({
+        calendarId: calendarId || 'primary',
+        title: title || 'Video',
+        link: uploaded.link,
+        startsAt,
+        notes,
+      });
+      setEventLink(event.link);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(uploaded.link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const mb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
+
+  return (
+    <main className="app">
+      <header className="head">
+        <h1>VideoShare</h1>
+        {signedIn && (
+          <button className="link-btn" onClick={handleSignOut}>
+            Sign out
+          </button>
+        )}
+      </header>
+
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <ol className="steps">
+        <li className={signedIn ? 'step done' : 'step'}>
+          <h2>Connect your Google account</h2>
+          {signedIn ? (
+            <p className="quiet">Connected. Videos go to your own Drive.</p>
+          ) : (
+            <button className="primary" onClick={handleSignIn}>
+              Sign in with Google
+            </button>
+          )}
+        </li>
+
+        <li className={file ? 'step done' : 'step'} aria-disabled={!signedIn}>
+          <h2>Record or choose a video</h2>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            onChange={handlePick}
+            hidden
+          />
+          <button className="primary" disabled={!signedIn} onClick={() => inputRef.current?.click()}>
+            {file ? 'Record another' : 'Open camera'}
+          </button>
+          {previewUrl && (
+            <>
+              <video className="preview" src={previewUrl} controls playsInline />
+              <p className="quiet">{mb} MB</p>
+            </>
+          )}
+        </li>
+
+        <li className={uploaded ? 'step done' : 'step'} aria-disabled={!file}>
+          <h2>Upload to Drive</h2>
+          <label className="field">
+            Name
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sunday practice" />
+          </label>
+          {!uploaded && (
+            <button className="primary" disabled={!file || uploading} onClick={handleUpload}>
+              {uploading ? `Uploading ${progress}%` : 'Upload'}
+            </button>
+          )}
+          {uploading && (
+            <div className="bar" role="progressbar" aria-valuenow={progress}>
+              <span style={{ width: `${progress}%` }} />
+            </div>
+          )}
+          {uploaded && (
+            <div className="result">
+              <a href={uploaded.link} target="_blank" rel="noreferrer">
+                {uploaded.link}
+              </a>
+              <button className="link-btn" onClick={handleCopy}>
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+            </div>
+          )}
+        </li>
+
+        <li className="step" aria-disabled={!uploaded}>
+          <h2>Share it</h2>
+          <label className="field">
+            When
+            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+          </label>
+          <label className="field">
+            Note
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Watch before Saturday"
+            />
+          </label>
+          <label className="field">
+            Calendar
+            <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
+              {calendars.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.primary ? ' (yours)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="row">
+            <button className="primary" disabled={!uploaded} onClick={handleAddToCalendar}>
+              Add to calendar
+            </button>
+            <button
+              className="secondary"
+              disabled={!uploaded}
+              onClick={() => downloadInvite({ title, link: uploaded.link, startsAt, notes })}
+            >
+              Download invite
+            </button>
+          </div>
+          {eventLink && (
+            <p className="quiet">
+              Added.{' '}
+              <a href={eventLink} target="_blank" rel="noreferrer">
+                Open the event
+              </a>
+            </p>
+          )}
+        </li>
+      </ol>
+    </main>
+  );
+}
