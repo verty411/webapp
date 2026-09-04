@@ -6,6 +6,8 @@ import {
   uploadVideo,
   listCalendars,
   createEvent,
+  deleteEvent,
+  deleteFile,
 } from './google';
 import { getFriends, addFriend, removeFriend } from './friends';
 import './App.css';
@@ -231,9 +233,10 @@ export default function App() {
     if (!uploaded) return;
     if (audience !== 'me' && selected.length === 0) return;
     setError(null);
+    const usedCalendarId = sharedCal ? sharedCal.id : calendarId || 'primary';
     try {
       const event = await createEvent({
-        calendarId: sharedCal ? sharedCal.id : calendarId || 'primary',
+        calendarId: usedCalendarId,
         title: title || uploaded.name,
         link: uploaded.link,
         startsAt,
@@ -248,6 +251,8 @@ export default function App() {
             name: title || uploaded.name,
             link: uploaded.link,
             eventLink: event.link,
+            eventId: event.id,
+            eventCalendarId: usedCalendarId,
             to: names,
             sharedCalendar: Boolean(sharedCal),
             when: new Date(startsAt).toISOString(),
@@ -257,6 +262,23 @@ export default function App() {
         ])
       );
       setSheet('sent');
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /** Removes the calendar event for a sent video, then offers to delete the video too. */
+  async function removeFromCalendar(v) {
+    setError(null);
+    try {
+      await deleteEvent(v.eventCalendarId, v.eventId);
+      let updated = sent.map((s) => (s.id === v.id ? { ...s, eventLink: null, eventId: null, eventCalendarId: null } : s));
+      setSent(saveSent(updated));
+      if (window.confirm(`Also delete "${v.name}" from Drive? This can't be undone.`)) {
+        await deleteFile(v.id);
+        updated = updated.filter((s) => s.id !== v.id);
+        setSent(saveSent(updated));
+      }
     } catch (e) {
       fail(e);
     }
@@ -381,7 +403,7 @@ export default function App() {
 
           <div className="section-head">
             <h3>Lately</h3>
-            {sent.length > 0 && <button className="link-btn" onClick={() => setScreen('library')}>All of it</button>}
+            {sent.length > 0 && <button className="link-btn" onClick={() => setScreen('library')}>Options</button>}
           </div>
           {sent.length === 0 ? (
             <p className="empty">Nothing sent yet. Record something and it'll show up here.</p>
@@ -419,6 +441,9 @@ export default function App() {
                   <div className="card-links">
                     <a className="link-btn" href={v.link} target="_blank" rel="noreferrer">Open video</a>
                     {v.eventLink && <a className="link-btn" href={v.eventLink} target="_blank" rel="noreferrer">Open reminder</a>}
+                    {v.eventId && v.eventCalendarId && (
+                      <button className="link-btn" onClick={() => removeFromCalendar(v)}>Remove from calendar</button>
+                    )}
                     <button className="link-btn" onClick={() => copy(v.link)}>{copied ? 'Copied' : 'Copy link'}</button>
                   </div>
                 </div>
@@ -500,6 +525,18 @@ export default function App() {
                 <h2>Who's it for?</h2>
                 <p>It's up in your Drive. Pick where this goes and when.</p>
                 {error && <p className="error" role="alert">{error}</p>}
+
+                <input
+                  className="input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Name this video"
+                  style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}
+                />
+                <p className="muted" style={{ fontSize: 12.5, margin: '0 0 18px' }}>
+                  This name is what shows up everywhere it's listed in the app — on the calendar
+                  event and in your Lately list — so make it something that's clear at a glance.
+                </p>
 
                 <div className="when-chips" style={{ marginBottom: 18 }}>
                   <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Just them</button>

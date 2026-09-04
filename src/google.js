@@ -250,6 +250,29 @@ export async function createEvent({
   return { id: event.id, link: event.htmlLink };
 }
 
+/** Removes a calendar event (and notifies any attendees it was cancelled). */
+export async function deleteEvent(calendarId, eventId) {
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+    { method: 'DELETE', headers: authHeaders() }
+  );
+  // 410 means it's already gone (e.g. deleted from Google Calendar directly) — treat that as success too.
+  if (res.ok || res.status === 410) return;
+  await checkResponse(res, 'Removing the calendar event');
+}
+
+/* ----------------------------------------------------------------- Drive */
+
+/** Permanently deletes a video from Drive. */
+export async function deleteFile(fileId) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (res.ok || res.status === 404) return;
+  await checkResponse(res, 'Deleting the video');
+}
+
 /* ------------------------------------------------------------------ ICS */
 
 function icsEscape(text = '') {
