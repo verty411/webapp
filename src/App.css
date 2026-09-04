@@ -524,38 +524,6 @@ a { color: var(--a-700); text-underline-offset: 3px; }
   margin-bottom: 14px;
 }
 
-.panel-head { display: flex; align-items: center; gap: 12px; }
-.panel-head .sage-icon { flex: 0 0 auto; color: var(--s-700); }
-.panel-head .body { flex: 1 1 auto; }
-.panel-head strong { display: block; font-size: 15px; }
-.panel-head span { font-size: 12.5px; color: var(--muted); }
-
-.switch {
-  flex: 0 0 auto;
-  width: 52px;
-  height: 31px;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
-  padding: 3px;
-  background: var(--n-400);
-  display: flex;
-  justify-content: flex-start;
-  transition: background-color 0.18s;
-}
-
-.switch.on { background: var(--s-600); justify-content: flex-end; }
-.switch span { width: 25px; height: 25px; border-radius: 50%; background: var(--n-100); box-shadow: var(--shadow-sm); }
-
-.panel-more {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--divider);
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
 .when-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .chip {
@@ -570,19 +538,6 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 }
 
 .chip.on { background: var(--s-600); border-color: var(--s-600); color: var(--s-100); }
-
-.link-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 16px;
-  border-radius: 999px;
-  background: var(--a-100);
-  margin-bottom: 18px;
-}
-
-.link-strip svg { flex: 0 0 auto; color: var(--a-700); }
-.link-strip span { flex: 1 1 auto; font-size: 13px; color: var(--a-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .error {
   padding: 13px 16px;

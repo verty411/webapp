@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   signIn,
   signOut,
@@ -40,42 +40,21 @@ function avatarStyle(i) {
   return { background, color };
 }
 
-/** Three plain-language reminder times, computed fresh each render. */
-function whenOptions(now = new Date()) {
-  const at = (daysAhead, hour) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() + daysAhead);
-    d.setHours(hour, 0, 0, 0);
-    return d;
-  };
-  const tonight = now.getHours() < 19 ? at(0, 20) : at(1, 20);
-  const tomorrow = at(1, 18);
-  const saturday = (() => {
-    const d = at(0, 10);
-    do {
-      d.setDate(d.getDate() + 1);
-    } while (d.getDay() !== 6);
-    return d;
-  })();
-  return [
-    { label: tonight.getDate() === now.getDate() ? 'Tonight, 8:00' : 'Tomorrow, 8:00', date: tonight },
-    { label: 'Tomorrow, 6:00', date: tomorrow },
-    { label: 'Saturday, 10:00', date: saturday },
-  ];
-}
-
 function toLocalInput(date) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** An hour from now, on the hour — the default send time. */
+function defaultStart() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setMinutes(0, 0, 0);
+  return toLocalInput(d);
+}
+
 function listNames(names) {
   if (names.length <= 1) return names.join('');
   return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-}
-
-function shortLink(link = '') {
-  return link.replace(/^https?:\/\//, '').replace(/\/view.*$/, '').slice(0, 38) + '…';
 }
 
 /* ---------------------------------------------------------------- icons */
@@ -135,21 +114,6 @@ const Clock = ({ size = 19 }) => (
   </svg>
 );
 
-const Calendar = ({ size = 21 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
-    <rect x="3" y="5" width="18" height="16" rx="4" />
-    <path d="M8 3v4M16 3v4M3 11h18" />
-  </svg>
-);
-
-const Link = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
-    <path d="M9 17H7.5a5 5 0 0 1 0-10H9" />
-    <path d="M15 7h1.5a5 5 0 0 1 0 10H15" />
-    <path d="M8.5 12h7" />
-  </svg>
-);
-
 /* ------------------------------------------------------------------ app */
 
 export default function App() {
@@ -165,8 +129,8 @@ export default function App() {
 
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
-  const [remind, setRemind] = useState(true);
-  const [whenIndex, setWhenIndex] = useState(0);
+  const [audience, setAudience] = useState('them'); // 'them' | 'both' | 'me'
+  const [startsAt, setStartsAt] = useState(defaultStart);
   const [calendars, setCalendars] = useState([]);
   const [calendarId, setCalendarId] = useState('');
 
@@ -178,8 +142,6 @@ export default function App() {
   const [sent, setSent] = useState(() => loadSent());
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
-
-  const whens = useMemo(() => whenOptions(), [sheet]);
 
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
 
@@ -226,6 +188,8 @@ export default function App() {
     setTitle('');
     setNote('');
     setSelected([]);
+    setAudience('them');
+    setStartsAt(defaultStart());
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
   }
@@ -258,32 +222,29 @@ export default function App() {
   }
 
   async function send() {
-    if (!uploaded || selected.length === 0) return;
+    if (!uploaded) return;
+    if (audience !== 'me' && selected.length === 0) return;
     setError(null);
-    const names = friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
-    const when = whens[whenIndex];
+    const names = audience === 'me' ? [] : friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
     try {
-      let eventLink = null;
-      if (remind) {
-        const event = await createEvent({
-          calendarId: calendarId || 'primary',
-          title: title || uploaded.name,
-          link: uploaded.link,
-          startsAt: toLocalInput(when.date),
-          notes: note,
-          attendeeEmails: selected,
-        });
-        eventLink = event.link;
-      }
+      const event = await createEvent({
+        calendarId: calendarId || 'primary',
+        title: title || uploaded.name,
+        link: uploaded.link,
+        startsAt,
+        notes: note,
+        attendeeEmails: audience === 'me' ? [] : selected,
+        includeSelf: audience === 'both',
+      });
       setSent(
         saveSent([
           {
             id: uploaded.id,
             name: title || uploaded.name,
             link: uploaded.link,
-            eventLink,
+            eventLink: event.link,
             to: names,
-            when: remind ? when.date.toISOString() : null,
+            when: new Date(startsAt).toISOString(),
             sentAt: new Date().toISOString(),
           },
           ...sent,
@@ -316,18 +277,15 @@ export default function App() {
     if (uploaded) setSheet('share');
   }
 
-  const names = friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
+  const names = audience === 'me' ? [] : friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
   const upcoming = sent.filter((v) => v.when && new Date(v.when) > new Date()).sort((a, b) => new Date(a.when) - new Date(b.when))[0];
   const done = progress >= 100;
   const mb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
 
   function metaFor(v) {
-    const to = listNames(v.to) || 'no one';
-    if (v.when) {
-      const d = new Date(v.when);
-      return `Reminder ${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${to}`;
-    }
-    return `Sent ${new Date(v.sentAt).toLocaleDateString()} · ${to}`;
+    const to = v.to.length ? listNames(v.to) : 'you';
+    const d = new Date(v.when);
+    return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${to}`;
   }
 
   /* ------------------------------------------------------------- render */
@@ -532,79 +490,68 @@ export default function App() {
             {sheet === 'share' && (
               <div>
                 <h2>Who's it for?</h2>
-                <p>It's up in your Drive. Pick people and it goes out as a reminder with the link.</p>
+                <p>It's up in your Drive. Pick where this goes and when.</p>
                 {error && <p className="error" role="alert">{error}</p>}
 
                 <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ fontWeight: 600, fontSize: 16, marginBottom: 18 }} />
 
-                <div className="pickers">
-                  {friends.map((f, i) => {
-                    const on = selected.includes(f.email);
-                    return (
-                      <button
-                        key={f.email}
-                        className={on ? 'picker on' : 'picker'}
-                        onClick={() => setSelected(on ? selected.filter((e) => e !== f.email) : [...selected, f.email])}
-                      >
-                        <span className="avatar" style={avatarStyle(i)}>
-                          {f.name[0]}
-                          {on && <span className="tick"><Check size={11} color="#f0fae1" /></span>}
-                        </span>
-                        <b>{f.name}</b>
-                      </button>
-                    );
-                  })}
-                  <button className="picker" onClick={() => setScreen('people')}>
-                    <span className="avatar new"><Plus /></span>
-                    <b>Someone</b>
-                  </button>
+                <div className="when-chips" style={{ marginBottom: 18 }}>
+                  <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Just them</button>
+                  <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Them + me</button>
+                  <button className={audience === 'me' ? 'chip on' : 'chip'} onClick={() => setAudience('me')}>Just me</button>
                 </div>
 
-                <div className="panel">
-                  <div className="panel-head">
-                    <span className="sage-icon"><Calendar /></span>
-                    <div className="body">
-                      <strong>Add a reminder</strong>
-                      <span>Lands on their calendar</span>
-                    </div>
-                    <button
-                      className={remind ? 'switch on' : 'switch'}
-                      aria-pressed={remind}
-                      aria-label="Add a calendar reminder"
-                      onClick={() => setRemind(!remind)}
-                    >
-                      <span />
+                {audience !== 'me' && (
+                  <div className="pickers">
+                    {friends.map((f, i) => {
+                      const on = selected.includes(f.email);
+                      return (
+                        <button
+                          key={f.email}
+                          className={on ? 'picker on' : 'picker'}
+                          onClick={() => setSelected(on ? selected.filter((e) => e !== f.email) : [...selected, f.email])}
+                        >
+                          <span className="avatar" style={avatarStyle(i)}>
+                            {f.name[0]}
+                            {on && <span className="tick"><Check size={11} color="#f0fae1" /></span>}
+                          </span>
+                          <b>{f.name}</b>
+                        </button>
+                      );
+                    })}
+                    <button className="picker" onClick={() => setScreen('people')}>
+                      <span className="avatar new"><Plus /></span>
+                      <b>Someone</b>
                     </button>
                   </div>
-                  {remind && (
-                    <div className="panel-more">
-                      <div className="when-chips">
-                        {whens.map((w, i) => (
-                          <button key={w.label} className={i === whenIndex ? 'chip on' : 'chip'} onClick={() => setWhenIndex(i)}>
-                            {w.label}
-                          </button>
-                        ))}
-                      </div>
-                      <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Say something (optional)" />
-                      {calendars.length > 1 && (
-                        <select className="input" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
-                          {calendars.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}{c.primary ? ' (yours)' : ''}</option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                )}
+
+                <div className="panel">
+                  <div className="field-label">When</div>
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
+                    style={{ marginBottom: 12 }}
+                  />
+                  <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Say something (optional)" />
+                  {calendars.length > 1 && (
+                    <select
+                      className="input"
+                      value={calendarId}
+                      onChange={(e) => setCalendarId(e.target.value)}
+                      style={{ marginTop: 9 }}
+                    >
+                      {calendars.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}{c.primary ? ' (yours)' : ''}</option>
+                      ))}
+                    </select>
                   )}
                 </div>
 
-                <div className="link-strip">
-                  <Link />
-                  <span>{shortLink(uploaded?.link)}</span>
-                  <button className="link-btn" onClick={() => copy(uploaded.link)}>{copied ? 'Copied' : 'Copy'}</button>
-                </div>
-
-                <button className="btn btn-primary" disabled={selected.length === 0} onClick={send}>
-                  {selected.length === 0 ? 'Pick someone first' : remind ? 'Send with reminder' : 'Send the link'}
+                <button className="btn btn-primary" disabled={audience !== 'me' && selected.length === 0} onClick={send}>
+                  {audience !== 'me' && selected.length === 0 ? 'Pick someone first' : 'Send'}
                 </button>
               </div>
             )}
@@ -614,13 +561,21 @@ export default function App() {
                 <div className="big-icon sage"><Check size={42} color="#56633f" /></div>
                 <h2>Off it goes</h2>
                 <p className="muted">
-                  {remind
-                    ? `${listNames(names) || 'They'} will get a reminder for ${whens[whenIndex].label.toLowerCase()} with the link attached.`
-                    : `${listNames(names) || 'They'} have the link now.`}
+                  {(() => {
+                    const when = new Date(startsAt).toLocaleString(undefined, {
+                      weekday: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    });
+                    if (audience === 'me') return `It's on your calendar for ${when}.`;
+                    const who = listNames(names) || 'They';
+                    return audience === 'both'
+                      ? `${who} and you will see it on the calendar for ${when}.`
+                      : `${who} will see it on the calendar for ${when}.`;
+                  })()}
                 </p>
                 <div className="sheet-actions">
                   <button className="btn btn-primary" onClick={() => { setSheet(null); reset(); }}>Back home</button>
-                  <button className="btn btn-secondary" onClick={() => copy(sent[0]?.link)}>{copied ? 'Copied' : 'Copy link'}</button>
                 </div>
               </div>
             )}

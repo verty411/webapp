@@ -204,12 +204,20 @@ export async function listCalendars() {
   }));
 }
 
-/** Creates a 30-minute event carrying the video link. Optionally emails invites to attendeeEmails. */
-export async function createEvent({ calendarId, title, link, startsAt, notes, attendeeEmail, attendeeEmails }) {
+/**
+ * Creates a 30-minute event carrying the video link.
+ * attendeeEmails invites those people; includeSelf also lists the organizer
+ * as an attendee (rather than just the implicit owner) so "them + me" reads
+ * the same as any other invite on the calendar.
+ */
+export async function createEvent({ calendarId, title, link, startsAt, notes, attendeeEmails = [], includeSelf = false }) {
   const start = new Date(startsAt);
   const end = new Date(start.getTime() + 30 * 60 * 1000);
 
-  const invited = (attendeeEmails || (attendeeEmail ? [attendeeEmail] : [])).filter(Boolean);
+  const attendees = [
+    ...(includeSelf ? [{ self: true }] : []),
+    ...attendeeEmails.filter(Boolean).map((email) => ({ email })),
+  ];
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`,
@@ -222,7 +230,7 @@ export async function createEvent({ calendarId, title, link, startsAt, notes, at
         start: { dateTime: start.toISOString() },
         end: { dateTime: end.toISOString() },
         reminders: { useDefault: true },
-        ...(invited.length ? { attendees: invited.map((email) => ({ email })) } : {}),
+        ...(attendees.length ? { attendees } : {}),
       }),
     }
   );
