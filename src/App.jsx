@@ -1,354 +1,653 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   signIn,
   signOut,
-  isSignedIn,
   restoreSession,
   uploadVideo,
   listCalendars,
   createEvent,
-  downloadInvite,
 } from './google';
 import { getFriends, addFriend, removeFriend } from './friends';
 import './App.css';
 
-function defaultStart() {
-  const d = new Date(Date.now() + 60 * 60 * 1000);
-  d.setMinutes(0, 0, 0);
-  // datetime-local wants local time, not UTC
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/* -------------------------------------------------------------- helpers */
+
+const SENT_KEY = 'videoshare_sent';
+
+function loadSent() {
+  try {
+    const raw = localStorage.getItem(SENT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
+function saveSent(list) {
+  localStorage.setItem(SENT_KEY, JSON.stringify(list.slice(0, 60)));
+  return list;
+}
+
+const AVATARS = [
+  ['#ffe1d0', '#643312'],
+  ['#e1eecc', '#3d472b'],
+  ['#dcd3c4', '#2e2b25'],
+  ['#ffc6a5', '#402310'],
+];
+
+function avatarStyle(i) {
+  const [background, color] = AVATARS[i % AVATARS.length];
+  return { background, color };
+}
+
+/** Three plain-language reminder times, computed fresh each render. */
+function whenOptions(now = new Date()) {
+  const at = (daysAhead, hour) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + daysAhead);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
+  const tonight = now.getHours() < 19 ? at(0, 20) : at(1, 20);
+  const tomorrow = at(1, 18);
+  const saturday = (() => {
+    const d = at(0, 10);
+    do {
+      d.setDate(d.getDate() + 1);
+    } while (d.getDay() !== 6);
+    return d;
+  })();
+  return [
+    { label: tonight.getDate() === now.getDate() ? 'Tonight, 8:00' : 'Tomorrow, 8:00', date: tonight },
+    { label: 'Tomorrow, 6:00', date: tomorrow },
+    { label: 'Saturday, 10:00', date: saturday },
+  ];
+}
+
+function toLocalInput(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function listNames(names) {
+  if (names.length <= 1) return names.join('');
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
+function shortLink(link = '') {
+  return link.replace(/^https?:\/\//, '').replace(/\/view.*$/, '').slice(0, 38) + '…';
+}
+
+/* ---------------------------------------------------------------- icons */
+
+const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 2.75, strokeLinecap: 'round', strokeLinejoin: 'round' };
+
+const Camera = ({ size = 24, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke={color || 'currentColor'}>
+    <rect x="2" y="6" width="13" height="12" rx="3" />
+    <path d="m15 11 6-3.5v9L15 13" />
+  </svg>
+);
+
+const Play = ({ size = 20, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke={color || 'currentColor'}>
+    <path d="M9 7.5 17 12l-8 4.5z" />
+  </svg>
+);
+
+const Library = ({ size = 21 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+    <rect x="3" y="4" width="18" height="16" rx="4" />
+    <path d="M10 9.5 15 12l-5 2.5z" />
+  </svg>
+);
+
+const People = ({ size = 21 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+    <circle cx="9" cy="8" r="4" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+    <path d="M17 8.5a3 3 0 0 1 0 5.5" />
+  </svg>
+);
+
+const Back = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}><path d="m15 18-6-6 6-6" /></svg>
+);
+
+const Close = ({ size = 17 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}><path d="M18 6 6 18M6 6l12 12" /></svg>
+);
+
+const Plus = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}><path d="M5 12h14M12 5v14" /></svg>
+);
+
+const Check = ({ size = 24, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke={color || 'currentColor'}>
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);
+
+const Clock = ({ size = 19 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8v4l2.5 2" />
+  </svg>
+);
+
+const Calendar = ({ size = 21 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+    <rect x="3" y="5" width="18" height="16" rx="4" />
+    <path d="M8 3v4M16 3v4M3 11h18" />
+  </svg>
+);
+
+const Link = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+    <path d="M9 17H7.5a5 5 0 0 1 0-10H9" />
+    <path d="M15 7h1.5a5 5 0 0 1 0 10H15" />
+    <path d="M8.5 12h7" />
+  </svg>
+);
+
+/* ------------------------------------------------------------------ app */
+
 export default function App() {
-  const [signedIn, setSignedIn] = useState(false);
+  const [screen, setScreen] = useState('signin'); // signin | home | library | people
+  const [sheet, setSheet] = useState(null); // upload | share | sent | reauth
+  const [expired, setExpired] = useState(false);
+  const [error, setError] = useState(null);
+
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploaded, setUploaded] = useState(null);
 
+  const [title, setTitle] = useState('');
+  const [note, setNote] = useState('');
+  const [remind, setRemind] = useState(true);
+  const [whenIndex, setWhenIndex] = useState(0);
   const [calendars, setCalendars] = useState([]);
   const [calendarId, setCalendarId] = useState('');
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [startsAt, setStartsAt] = useState(defaultStart);
-  const [attendeeEmail, setAttendeeEmail] = useState('');
-  const [eventLink, setEventLink] = useState(null);
-  const [inviteSent, setInviteSent] = useState(false);
 
   const [friends, setFriends] = useState(() => getFriends());
-  const [addingFriend, setAddingFriend] = useState(false);
-  const [newFriendName, setNewFriendName] = useState('');
-  const [newFriendEmail, setNewFriendEmail] = useState('');
+  const [selected, setSelected] = useState([]);
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
 
-  const [error, setError] = useState(null);
+  const [sent, setSent] = useState(() => loadSent());
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    return () => previewUrl && URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
+  const whens = useMemo(() => whenOptions(), [sheet]);
+
+  useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
 
   useEffect(() => {
     if (!restoreSession()) return;
     listCalendars()
       .then((cals) => {
-        setSignedIn(true);
         setCalendars(cals);
+        setScreen('home');
       })
       .catch(() => {
-        // Saved token turned out to be invalid (e.g. revoked elsewhere) — just stay signed out.
+        // Saved token was revoked or stale — stay on sign-in.
       });
   }, []);
 
-  async function handleSignIn() {
+  /** Every Google call funnels through here so an expired hour surfaces the same way. */
+  function fail(e) {
+    if (/session expired|Signed out/i.test(e.message)) {
+      setExpired(true);
+      setSheet('reauth');
+      setError(null);
+    } else {
+      setError(e.message);
+    }
+  }
+
+  async function connect() {
     setError(null);
     try {
       await signIn();
-      setSignedIn(true);
       setCalendars(await listCalendars());
+      setExpired(false);
+      setScreen('home');
+      setSheet(uploaded || file ? 'share' : null);
     } catch (e) {
       setError(e.message);
     }
   }
 
-  function handleSignOut() {
-    signOut();
-    setSignedIn(false);
-    setCalendars([]);
+  function reset() {
+    setFile(null);
     setUploaded(null);
-    setEventLink(null);
-  }
-
-  function handlePick(e) {
-    const picked = e.target.files?.[0];
-    if (!picked) return;
-    setFile(picked);
-    setUploaded(null);
-    setEventLink(null);
-    setInviteSent(false);
     setProgress(0);
-    setError(null);
+    setTitle('');
+    setNote('');
+    setSelected([]);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  }
+
+  function record() {
+    if (expired) return setSheet('reauth');
+    setError(null);
+    inputRef.current?.click();
+  }
+
+  async function pick(e) {
+    const picked = e.target.files?.[0];
+    e.target.value = '';
+    if (!picked) return;
+    reset();
+    setFile(picked);
     setPreviewUrl(URL.createObjectURL(picked));
-    if (!title) setTitle(`Video ${new Date().toLocaleDateString()}`);
-  }
-
-  async function handleUpload() {
-    if (!file) return;
-    setUploading(true);
+    const name = `Video ${new Date().toLocaleDateString()}`;
+    setTitle(name);
+    setSheet('upload');
     setProgress(0);
-    setError(null);
     try {
-      const result = await uploadVideo(file, title || file.name, setProgress);
+      const result = await uploadVideo(picked, name, setProgress);
       setUploaded(result);
+      setTimeout(() => setSheet('share'), 400);
     } catch (e) {
-      setError(e.message);
-      if (/session expired|Signed out/i.test(e.message)) setSignedIn(false);
-    } finally {
-      setUploading(false);
+      setSheet(null);
+      fail(e);
     }
   }
 
-  async function handleAddToCalendar() {
+  async function send() {
+    if (!uploaded || selected.length === 0) return;
     setError(null);
+    const names = friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
+    const when = whens[whenIndex];
     try {
-      const event = await createEvent({
-        calendarId: calendarId || 'primary',
-        title: title || 'Video',
-        link: uploaded.link,
-        startsAt,
-        notes,
-      });
-      setEventLink(event.link);
+      let eventLink = null;
+      if (remind) {
+        const event = await createEvent({
+          calendarId: calendarId || 'primary',
+          title: title || uploaded.name,
+          link: uploaded.link,
+          startsAt: toLocalInput(when.date),
+          notes: note,
+          attendeeEmails: selected,
+        });
+        eventLink = event.link;
+      }
+      setSent(
+        saveSent([
+          {
+            id: uploaded.id,
+            name: title || uploaded.name,
+            link: uploaded.link,
+            eventLink,
+            to: names,
+            when: remind ? when.date.toISOString() : null,
+            sentAt: new Date().toISOString(),
+          },
+          ...sent,
+        ])
+      );
+      setSheet('sent');
     } catch (e) {
-      setError(e.message);
+      fail(e);
     }
   }
 
-  async function handleSendInvite() {
-    setError(null);
+  async function copy(link) {
     try {
-      await createEvent({
-        calendarId: calendarId || 'primary',
-        title: title || 'Video',
-        link: uploaded.link,
-        startsAt,
-        notes,
-        attendeeEmail,
-      });
-      setInviteSent(true);
-    } catch (e) {
-      setError(e.message);
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setError('Copying failed — long-press the link instead.');
     }
   }
 
-  function handleSaveFriend() {
-    const name = newFriendName.trim();
-    const email = newFriendEmail.trim();
+  function saveFriend() {
+    const name = newName.trim();
+    const email = newEmail.trim();
     if (!name || !email) return;
     setFriends(addFriend(name, email));
-    setAttendeeEmail(email);
-    setInviteSent(false);
-    setNewFriendName('');
-    setNewFriendEmail('');
-    setAddingFriend(false);
+    setSelected((s) => [...s, email]);
+    setNewName('');
+    setNewEmail('');
+    if (uploaded) setSheet('share');
   }
 
-  function handleRemoveFriend(email) {
-    setFriends(removeFriend(email));
-    if (attendeeEmail === email) setAttendeeEmail('');
-  }
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(uploaded.link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
+  const names = friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
+  const upcoming = sent.filter((v) => v.when && new Date(v.when) > new Date()).sort((a, b) => new Date(a.when) - new Date(b.when))[0];
+  const done = progress >= 100;
   const mb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
+
+  function metaFor(v) {
+    const to = listNames(v.to) || 'no one';
+    if (v.when) {
+      const d = new Date(v.when);
+      return `Reminder ${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${to}`;
+    }
+    return `Sent ${new Date(v.sentAt).toLocaleDateString()} · ${to}`;
+  }
+
+  /* ------------------------------------------------------------- render */
+
+  if (screen === 'signin') {
+    return (
+      <main className="app">
+        <div className="signin">
+          <span className="blob blob-1" />
+          <span className="blob blob-2" />
+          <div>
+            <div className="mark"><Camera size={30} color="#f5ead8" /></div>
+            <h1>Send a video. Set a time.</h1>
+            <p>Record something, pick who should see it, and they get a reminder with the link attached.</p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {error && <p className="error" role="alert">{error}</p>}
+            <button className="btn btn-primary" onClick={connect}>Continue with Google</button>
+            <p className="fine">Your videos stay in your own Drive. We only ever add the ones you record here.</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="app">
-      <header className="head">
-        <h1>VideoShare</h1>
-        {signedIn && (
-          <button className="link-btn" onClick={handleSignOut}>
-            Sign out
-          </button>
-        )}
-      </header>
+      <input ref={inputRef} className="hidden" type="file" accept="video/*" capture="environment" onChange={pick} />
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      {screen === 'home' && (
+        <div className="screen">
+          <div className="head">
+            <div>
+              <div className="kicker">{new Date().toLocaleDateString(undefined, { weekday: 'long' })}</div>
+              <h2>What are we sharing?</h2>
+            </div>
+            <div className="head-actions">
+              <button className="icon-btn" title="Library" onClick={() => setScreen('library')}><Library /></button>
+              <button className="icon-btn" title="People" onClick={() => setScreen('people')}><People /></button>
+            </div>
+          </div>
 
-      <ol className="steps">
-        <li className={signedIn ? 'step done' : 'step'}>
-          <h2>Connect your Google account</h2>
-          {signedIn ? (
-            <p className="quiet">Connected. Videos go to your own Drive.</p>
-          ) : (
-            <button className="primary" onClick={handleSignIn}>
-              Sign in with Google
-            </button>
+          {error && <p className="error" role="alert">{error}</p>}
+
+          {expired && (
+            <div className="banner">
+              <span className="banner-icon"><Clock /></span>
+              <div className="banner-text">
+                <strong>Google signed you out</strong>
+                <span>It does that hourly. One tap fixes it.</span>
+              </div>
+              <button className="btn btn-primary btn-small" onClick={() => setSheet('reauth')}>Reconnect</button>
+            </div>
           )}
-        </li>
 
-        <li className={file ? 'step done' : 'step'} aria-disabled={!signedIn}>
-          <h2>Record or choose a video</h2>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="video/*"
-            capture="environment"
-            onChange={handlePick}
-            hidden
-          />
-          <button className="primary" disabled={!signedIn} onClick={() => inputRef.current?.click()}>
-            {file ? 'Record another' : 'Open camera'}
-          </button>
-          {previewUrl && (
+          <div className="ring-wrap">
+            <button className="ring" onClick={record}>
+              <span><Camera size={58} color="#f5ead8" /></span>
+            </button>
+            <div className="ring-label">
+              <b>Record something</b>
+              <span>Two taps to send it on</span>
+            </div>
+          </div>
+
+          {upcoming && (
             <>
-              <video className="preview" src={previewUrl} controls playsInline />
-              <p className="quiet">{mb} MB</p>
+              <div className="section-head"><h3>Coming up</h3></div>
+              <div className="next">
+                <span className="datechip">
+                  <span>
+                    <small>{new Date(upcoming.when).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</small>
+                    <b>{String(new Date(upcoming.when).getDate()).padStart(2, '0')}</b>
+                  </span>
+                </span>
+                <div className="next-body">
+                  <strong>{upcoming.name}</strong>
+                  <span>
+                    {new Date(upcoming.when).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · {listNames(upcoming.to)}
+                  </span>
+                </div>
+              </div>
             </>
           )}
-        </li>
 
-        <li className={uploaded ? 'step done' : 'step'} aria-disabled={!file}>
-          <h2>Upload to Drive</h2>
-          <label className="field">
-            Name
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Sunday practice" />
-          </label>
-          {!uploaded && (
-            <button className="primary" disabled={!file || uploading} onClick={handleUpload}>
-              {uploading ? `Uploading ${progress}%` : 'Upload'}
-            </button>
-          )}
-          {uploading && (
-            <div className="bar" role="progressbar" aria-valuenow={progress}>
-              <span style={{ width: `${progress}%` }} />
-            </div>
-          )}
-          {uploaded && (
-            <div className="result">
-              <a href={uploaded.link} target="_blank" rel="noreferrer">
-                {uploaded.link}
-              </a>
-              <button className="link-btn" onClick={handleCopy}>
-                {copied ? 'Copied' : 'Copy link'}
-              </button>
-            </div>
-          )}
-        </li>
-
-        <li className="step" aria-disabled={!uploaded}>
-          <h2>Share it</h2>
-          <label className="field">
-            When
-            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-          </label>
-          <label className="field">
-            Note
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Watch before Saturday"
-            />
-          </label>
-          <label className="field">
-            Calendar
-            <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
-              {calendars.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.primary ? ' (yours)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Invite by email (optional)
-            <select
-              value={addingFriend ? '__new__' : attendeeEmail}
-              onChange={(e) => {
-                if (e.target.value === '__new__') {
-                  setAddingFriend(true);
-                } else {
-                  setAddingFriend(false);
-                  setAttendeeEmail(e.target.value);
-                  setInviteSent(false);
-                }
-              }}
-            >
-              <option value="">No one</option>
-              {friends.map((f) => (
-                <option key={f.email} value={f.email}>
-                  {f.name}
-                </option>
-              ))}
-              <option value="__new__">+ Add someone new</option>
-            </select>
-          </label>
-          {addingFriend && (
-            <div className="add-friend">
-              <input
-                value={newFriendName}
-                onChange={(e) => setNewFriendName(e.target.value)}
-                placeholder="Nickname"
-              />
-              <input
-                type="email"
-                value={newFriendEmail}
-                onChange={(e) => setNewFriendEmail(e.target.value)}
-                placeholder="name@example.com"
-              />
-              <button type="button" className="secondary" onClick={handleSaveFriend}>
-                Save
-              </button>
-            </div>
-          )}
-          {attendeeEmail && !addingFriend && (
-            <button type="button" className="link-btn" onClick={() => handleRemoveFriend(attendeeEmail)}>
-              Forget {friends.find((f) => f.email === attendeeEmail)?.name || attendeeEmail}
-            </button>
-          )}
-          <div className="row">
-            <button className="primary" disabled={!uploaded} onClick={handleAddToCalendar}>
-              Add to calendar
-            </button>
-            <button className="primary" disabled={!uploaded || !attendeeEmail} onClick={handleSendInvite}>
-              Email invite
-            </button>
-            <button
-              className="secondary"
-              disabled={!uploaded}
-              onClick={() => downloadInvite({ title, link: uploaded.link, startsAt, notes })}
-            >
-              Download invite
-            </button>
+          <div className="section-head">
+            <h3>Lately</h3>
+            {sent.length > 0 && <button className="link-btn" onClick={() => setScreen('library')}>All of it</button>}
           </div>
-          {eventLink && (
-            <p className="quiet">
-              Added.{' '}
-              <a href={eventLink} target="_blank" rel="noreferrer">
-                Open the event
-              </a>
-            </p>
+          {sent.length === 0 ? (
+            <p className="empty">Nothing sent yet. Record something and it'll show up here.</p>
+          ) : (
+            <div className="list">
+              {sent.slice(0, 3).map((v) => (
+                <a className="row" key={v.id} href={v.link} target="_blank" rel="noreferrer">
+                  <span className="thumb"><Play color="#dcd3c4" /></span>
+                  <span className="row-body">
+                    <strong>{v.name}</strong>
+                    <span>{metaFor(v)}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
           )}
-          {inviteSent && (
-            <p className="quiet">
-              Invite emailed to {friends.find((f) => f.email === attendeeEmail)?.name || attendeeEmail}.
-            </p>
+        </div>
+      )}
+
+      {screen === 'library' && (
+        <div className="screen">
+          <div className="back-head">
+            <button className="icon-btn" onClick={() => setScreen('home')}><Back /></button>
+            <h2>Everything sent</h2>
+          </div>
+          {sent.length === 0 ? (
+            <p className="empty">Your sent videos will collect here.</p>
+          ) : (
+            <div className="list">
+              {sent.map((v) => (
+                <div className="card" key={v.id}>
+                  <div className="thumb"><Play size={30} color="#dcd3c4" /></div>
+                  <strong>{v.name}</strong>
+                  <span>{metaFor(v)}</span>
+                  <div className="card-links">
+                    <a className="link-btn" href={v.link} target="_blank" rel="noreferrer">Open video</a>
+                    {v.eventLink && <a className="link-btn" href={v.eventLink} target="_blank" rel="noreferrer">Open reminder</a>}
+                    <button className="link-btn" onClick={() => copy(v.link)}>{copied ? 'Copied' : 'Copy link'}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </li>
-      </ol>
+        </div>
+      )}
+
+      {screen === 'people' && (
+        <div className="screen">
+          <div className="back-head">
+            <button className="icon-btn" onClick={() => setScreen(uploaded ? 'home' : 'home')}><Back /></button>
+            <h2>Your people</h2>
+          </div>
+          <p className="muted" style={{ fontSize: 13.5, margin: '0 0 22px 56px' }}>
+            Saved on this phone only. Nobody gets added without an email from you.
+          </p>
+          <div className="list" style={{ marginBottom: 22 }}>
+            {friends.length === 0 && <p className="empty">No one saved yet.</p>}
+            {friends.map((f, i) => (
+              <div className="person" key={f.email}>
+                <span className="avatar" style={avatarStyle(i)}>{f.name[0]}</span>
+                <span className="person-body">
+                  <strong>{f.name}</strong>
+                  <span>{f.email}</span>
+                </span>
+                <button
+                  className="forget"
+                  title={`Forget ${f.name}`}
+                  onClick={() => {
+                    setFriends(removeFriend(f.email));
+                    setSelected((s) => s.filter((e) => e !== f.email));
+                  }}
+                >
+                  <Close />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="add-panel">
+            <h3>Add someone</h3>
+            <div className="stack">
+              <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="What you call them" />
+              <input className="input" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="their@email.com" />
+              <button className="btn btn-primary" onClick={saveFriend}>Save them</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sheet && (
+        <div className="scrim" role="dialog" aria-modal="true">
+          <div className="sheet">
+            <div className="grab" />
+
+            {sheet === 'upload' && (
+              <div>
+                <h2>{done ? 'Up it went' : 'Sending it up'}</h2>
+                <p>{done ? "Link's ready — who should see it?" : 'Keep the app open until this finishes.'}</p>
+                <div className="upload-row">
+                  <span className="thumb">
+                    {previewUrl ? <video src={previewUrl} muted playsInline /> : <Play color="#dcd3c4" />}
+                  </span>
+                  <div className="body">
+                    <strong>{title}</strong>
+                    <span className="muted" style={{ fontSize: 12.5 }}>
+                      {done ? `${mb} MB · in your Drive` : `${progress}% of ${mb} MB`}
+                    </span>
+                    <div className="bar"><span style={{ width: `${progress}%` }} /></div>
+                  </div>
+                </div>
+                <button className="btn btn-secondary" onClick={() => { setSheet(null); reset(); }}>Cancel</button>
+              </div>
+            )}
+
+            {sheet === 'share' && (
+              <div>
+                <h2>Who's it for?</h2>
+                <p>It's up in your Drive. Pick people and it goes out as a reminder with the link.</p>
+                {error && <p className="error" role="alert">{error}</p>}
+
+                <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ fontWeight: 600, fontSize: 16, marginBottom: 18 }} />
+
+                <div className="pickers">
+                  {friends.map((f, i) => {
+                    const on = selected.includes(f.email);
+                    return (
+                      <button
+                        key={f.email}
+                        className={on ? 'picker on' : 'picker'}
+                        onClick={() => setSelected(on ? selected.filter((e) => e !== f.email) : [...selected, f.email])}
+                      >
+                        <span className="avatar" style={avatarStyle(i)}>
+                          {f.name[0]}
+                          {on && <span className="tick"><Check size={11} color="#f0fae1" /></span>}
+                        </span>
+                        <b>{f.name}</b>
+                      </button>
+                    );
+                  })}
+                  <button className="picker" onClick={() => setScreen('people')}>
+                    <span className="avatar new"><Plus /></span>
+                    <b>Someone</b>
+                  </button>
+                </div>
+
+                <div className="panel">
+                  <div className="panel-head">
+                    <span className="sage-icon"><Calendar /></span>
+                    <div className="body">
+                      <strong>Add a reminder</strong>
+                      <span>Lands on their calendar</span>
+                    </div>
+                    <button
+                      className={remind ? 'switch on' : 'switch'}
+                      aria-pressed={remind}
+                      aria-label="Add a calendar reminder"
+                      onClick={() => setRemind(!remind)}
+                    >
+                      <span />
+                    </button>
+                  </div>
+                  {remind && (
+                    <div className="panel-more">
+                      <div className="when-chips">
+                        {whens.map((w, i) => (
+                          <button key={w.label} className={i === whenIndex ? 'chip on' : 'chip'} onClick={() => setWhenIndex(i)}>
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                      <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Say something (optional)" />
+                      {calendars.length > 1 && (
+                        <select className="input" value={calendarId} onChange={(e) => setCalendarId(e.target.value)}>
+                          {calendars.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}{c.primary ? ' (yours)' : ''}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="link-strip">
+                  <Link />
+                  <span>{shortLink(uploaded?.link)}</span>
+                  <button className="link-btn" onClick={() => copy(uploaded.link)}>{copied ? 'Copied' : 'Copy'}</button>
+                </div>
+
+                <button className="btn btn-primary" disabled={selected.length === 0} onClick={send}>
+                  {selected.length === 0 ? 'Pick someone first' : remind ? 'Send with reminder' : 'Send the link'}
+                </button>
+              </div>
+            )}
+
+            {sheet === 'sent' && (
+              <div className="sheet-center">
+                <div className="big-icon sage"><Check size={42} color="#56633f" /></div>
+                <h2>Off it goes</h2>
+                <p className="muted">
+                  {remind
+                    ? `${listNames(names) || 'They'} will get a reminder for ${whens[whenIndex].label.toLowerCase()} with the link attached.`
+                    : `${listNames(names) || 'They'} have the link now.`}
+                </p>
+                <div className="sheet-actions">
+                  <button className="btn btn-primary" onClick={() => { setSheet(null); reset(); }}>Back home</button>
+                  <button className="btn btn-secondary" onClick={() => copy(sent[0]?.link)}>{copied ? 'Copied' : 'Copy link'}</button>
+                </div>
+              </div>
+            )}
+
+            {sheet === 'reauth' && (
+              <div className="sheet-center">
+                <div className="big-icon clay"><Clock size={40} /></div>
+                <h2>Reconnect to Google</h2>
+                <p className="muted">
+                  Google's sign-in only lasts an hour. Nothing was lost — your video and the people you picked are still here.
+                </p>
+                {error && <p className="error" role="alert">{error}</p>}
+                <div className="sheet-actions">
+                  <button className="btn btn-primary" onClick={connect}>Continue with Google</button>
+                  <button className="btn btn-secondary" onClick={() => setSheet(uploaded ? 'share' : null)}>Not now</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {screen !== 'signin' && screen === 'home' && (
+        <div style={{ padding: '0 24px 32px', textAlign: 'center' }}>
+          <button className="link-btn" onClick={() => { signOut(); reset(); setScreen('signin'); }}>Sign out</button>
+        </div>
+      )}
     </main>
   );
 }

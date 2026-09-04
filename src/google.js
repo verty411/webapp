@@ -204,10 +204,12 @@ export async function listCalendars() {
   }));
 }
 
-/** Creates a 30-minute event carrying the video link. Optionally emails an invite to attendeeEmail. */
-export async function createEvent({ calendarId, title, link, startsAt, notes, attendeeEmail }) {
+/** Creates a 30-minute event carrying the video link. Optionally emails invites to attendeeEmails. */
+export async function createEvent({ calendarId, title, link, startsAt, notes, attendeeEmail, attendeeEmails }) {
   const start = new Date(startsAt);
   const end = new Date(start.getTime() + 30 * 60 * 1000);
+
+  const invited = (attendeeEmails || (attendeeEmail ? [attendeeEmail] : [])).filter(Boolean);
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`,
@@ -220,7 +222,7 @@ export async function createEvent({ calendarId, title, link, startsAt, notes, at
         start: { dateTime: start.toISOString() },
         end: { dateTime: end.toISOString() },
         reminders: { useDefault: true },
-        ...(attendeeEmail ? { attendees: [{ email: attendeeEmail }] } : {}),
+        ...(invited.length ? { attendees: invited.map((email) => ({ email })) } : {}),
       }),
     }
   );
