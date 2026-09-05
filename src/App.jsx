@@ -10,6 +10,7 @@ import {
   deleteFile,
 } from './google';
 import { getFriends, addFriend, removeFriend } from './friends';
+import { getLists, addList, removeList, addMemberToList, removeMemberFromList, removeFriendEverywhere } from './lists';
 import './App.css';
 
 /* -------------------------------------------------------------- helpers */
@@ -116,6 +117,12 @@ const Clock = ({ size = 19 }) => (
   </svg>
 );
 
+const Dollar = ({ size = 13 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke="var(--gold)">
+    <path d="M12 2v20M16.5 6.5c0-1.7-2-3-4.5-3s-4.5 1.4-4.5 3 2 2.7 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" />
+  </svg>
+);
+
 /* ------------------------------------------------------------------ app */
 
 export default function App() {
@@ -141,11 +148,47 @@ export default function App() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
 
+  const [lists, setLists] = useState(() => getLists());
+  const [addingList, setAddingList] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [dragEmail, setDragEmail] = useState(null);
+  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const [overListId, setOverListId] = useState(null);
+
   const [sent, setSent] = useState(() => loadSent());
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
+
+  /** Drag a person onto a list to add them — pointer events so it works on touch, not just mouse. */
+  function startDrag(email, e) {
+    e.preventDefault();
+    setDragEmail(email);
+    setDragPos({ x: e.clientX, y: e.clientY });
+  }
+
+  useEffect(() => {
+    if (!dragEmail) return;
+    let overId = null;
+    function onMove(e) {
+      setDragPos({ x: e.clientX, y: e.clientY });
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      overId = el?.closest('[data-list-drop]')?.dataset.listDrop || null;
+      setOverListId(overId);
+    }
+    function onUp() {
+      if (overId) setLists(addMemberToList(overId, dragEmail));
+      setDragEmail(null);
+      setOverListId(null);
+    }
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+    };
+  }, [dragEmail]);
 
   useEffect(() => {
     if (!restoreSession()) return;
@@ -460,12 +503,84 @@ export default function App() {
             <h2>Your people</h2>
           </div>
           <p className="muted" style={{ fontSize: 13.5, margin: '0 0 22px 56px' }}>
-            Saved on this phone only. Nobody gets added without an email from you.
+            Saved on this phone only. Nobody gets added without an email from you. Drag someone
+            onto a list below to group them.
           </p>
+
+          <div className="section-head"><h3>Lists</h3></div>
+          <div className="list" style={{ marginBottom: 14 }}>
+            {lists.length === 0 && <p className="empty">No lists yet — drag someone below onto one to make it.</p>}
+            {lists.map((l) => (
+              <div key={l.id} className={overListId === l.id ? 'listgroup over' : 'listgroup'} data-list-drop={l.id}>
+                <div className="listgroup-head">
+                  <span className="listgroup-title">
+                    <Dollar />
+                    {l.name}
+                  </span>
+                  <button className="forget" title={`Delete ${l.name}`} onClick={() => setLists(removeList(l.id))}>
+                    <Close size={14} />
+                  </button>
+                </div>
+                {l.memberEmails.length === 0 ? (
+                  <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Drop someone here</p>
+                ) : (
+                  <div className="listgroup-members">
+                    {l.memberEmails.map((email) => {
+                      const f = friends.find((fr) => fr.email === email);
+                      if (!f) return null;
+                      return (
+                        <span className="member-chip" key={email}>
+                          {f.name}
+                          <button
+                            aria-label={`Remove ${f.name} from ${l.name}`}
+                            onClick={() => setLists(removeMemberFromList(l.id, email))}
+                          >
+                            <Close size={10} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {addingList ? (
+            <div className="add-friend" style={{ marginBottom: 22 }}>
+              <input
+                className="input"
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                placeholder="List name"
+              />
+              <button
+                className="btn btn-primary btn-small"
+                onClick={() => {
+                  const name = newListName.trim();
+                  if (!name) return;
+                  setLists(addList(name));
+                  setNewListName('');
+                  setAddingList(false);
+                }}
+              >
+                Create
+              </button>
+            </div>
+          ) : (
+            <button className="link-btn" style={{ marginBottom: 22 }} onClick={() => setAddingList(true)}>+ New list</button>
+          )}
+
+          <div className="section-head"><h3>Everyone</h3></div>
           <div className="list" style={{ marginBottom: 22 }}>
             {friends.length === 0 && <p className="empty">No one saved yet.</p>}
             {friends.map((f, i) => (
-              <div className="person" key={f.email}>
+              <div
+                className="person"
+                key={f.email}
+                onPointerDown={(e) => startDrag(f.email, e)}
+                style={{ touchAction: 'none', opacity: dragEmail === f.email ? 0.4 : 1 }}
+              >
                 <span className="avatar" style={avatarStyle(i)}>{f.name[0]}</span>
                 <span className="person-body">
                   <strong>{f.name}</strong>
@@ -474,8 +589,10 @@ export default function App() {
                 <button
                   className="forget"
                   title={`Forget ${f.name}`}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => {
                     setFriends(removeFriend(f.email));
+                    setLists(removeFriendEverywhere(f.email));
                     setSelected((s) => s.filter((e) => e !== f.email));
                   }}
                 >
@@ -492,6 +609,12 @@ export default function App() {
               <button className="btn btn-primary" onClick={saveFriend}>Save them</button>
             </div>
           </div>
+
+          {dragEmail && (
+            <div className="drag-ghost" style={{ left: dragPos.x, top: dragPos.y }}>
+              {friends.find((f) => f.email === dragEmail)?.name}
+            </div>
+          )}
         </div>
       )}
 
