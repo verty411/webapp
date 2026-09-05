@@ -418,14 +418,21 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 
 /* --------------------------------------------------------------- people */
 
-.person {
-  display: flex;
-  align-items: center;
-  gap: 13px;
+.person-card {
   background: var(--n-100);
   border-radius: var(--r-md);
   padding: 12px 14px;
   box-shadow: var(--shadow-sm);
+  border: 2px dashed transparent;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.person-card.over { border-color: var(--gold); background: var(--a-100); }
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 13px;
 }
 
 .avatar {

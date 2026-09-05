@@ -152,9 +152,10 @@ export default function App() {
   const [lists, setLists] = useState(() => getLists());
   const [addingList, setAddingList] = useState(false);
   const [newListName, setNewListName] = useState('');
-  const [dragEmail, setDragEmail] = useState(null);
+  const [dragItem, setDragItem] = useState(null); // { type: 'contact' | 'calendar', id, label }
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
   const [overListId, setOverListId] = useState(null);
+  const [overContactId, setOverContactId] = useState(null);
 
   const [sent, setSent] = useState(() => loadSent());
   const [copied, setCopied] = useState(false);
@@ -162,26 +163,49 @@ export default function App() {
 
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
 
-  /** Drag a person onto a list to add them — pointer events so it works on touch, not just mouse. */
-  function startDrag(email, e) {
+  /**
+   * Drag a contact onto a list to add them, or a calendar onto a list (applies
+   * to everyone in it) or a single contact card. Pointer events so it works
+   * on touch, not just mouse.
+   */
+  function startDrag(type, id, label, e) {
     e.preventDefault();
-    setDragEmail(email);
+    setDragItem({ type, id, label });
     setDragPos({ x: e.clientX, y: e.clientY });
   }
 
   useEffect(() => {
-    if (!dragEmail) return;
-    let overId = null;
+    if (!dragItem) return;
+    let overList = null;
+    let overContact = null;
     function onMove(e) {
       setDragPos({ x: e.clientX, y: e.clientY });
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      overId = el?.closest('[data-list-drop]')?.dataset.listDrop || null;
-      setOverListId(overId);
+      overList = el?.closest('[data-list-drop]')?.dataset.listDrop || null;
+      overContact = el?.closest('[data-contact-drop]')?.dataset.contactDrop || null;
+      setOverListId(overList);
+      setOverContactId(overContact);
+    }
+    function assignCalendar(email, calId) {
+      const friend = getFriends().find((f) => f.email === email);
+      if (friend && !(friend.calendarIds || []).includes(calId)) {
+        setFriends(setFriendCalendars(email, [...(friend.calendarIds || []), calId]));
+      }
     }
     function onUp() {
-      if (overId) setLists(addMemberToList(overId, dragEmail));
-      setDragEmail(null);
+      if (dragItem.type === 'contact' && overList) {
+        setLists(addMemberToList(overList, dragItem.id));
+      } else if (dragItem.type === 'calendar') {
+        if (overList) {
+          const list = getLists().find((l) => l.id === overList);
+          list?.memberEmails.forEach((email) => assignCalendar(email, dragItem.id));
+        } else if (overContact) {
+          assignCalendar(overContact, dragItem.id);
+        }
+      }
+      setDragItem(null);
       setOverListId(null);
+      setOverContactId(null);
     }
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUp);
@@ -189,7 +213,7 @@ export default function App() {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
     };
-  }, [dragEmail]);
+  }, [dragItem]);
 
   useEffect(() => {
     if (!restoreSession()) return;
@@ -688,17 +712,50 @@ export default function App() {
             <button className="link-btn" style={{ marginBottom: 22 }} onClick={() => setAddingList(true)}>+ New list</button>
           )}
 
+          {assignableCalendars.length > 0 && (
+            <>
+              <div className="section-head"><h3>My Shared Calendars</h3></div>
+              <p className="muted" style={{ fontSize: 13, margin: '0 0 12px' }}>
+                Drag one onto a list, or onto a single contact, to tie it to them.
+              </p>
+              <div className="cal-chip-row" style={{ marginBottom: 22 }}>
+                {assignableCalendars.map((c) => (
+                  <button
+                    key={c.id}
+                    className="chip chip-sm"
+                    onPointerDown={(e) => startDrag('calendar', c.id, c.name, e)}
+                    style={{
+                      touchAction: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      opacity: dragItem?.type === 'calendar' && dragItem.id === c.id ? 0.4 : 1,
+                    }}
+                  >
+                    <Dollar size={11} />
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="section-head"><h3>Everyone</h3></div>
           <div className="list" style={{ marginBottom: 22 }}>
             {friends.length === 0 && <p className="empty">No one saved yet.</p>}
             {friends.map((f, i) => {
               const friendCalIds = f.calendarIds || [];
+              const auto = !friendCalIds.length ? calendars.find((c) => c.id.toLowerCase() === f.email.toLowerCase()) : null;
               return (
-                <div key={f.email}>
+                <div
+                  key={f.email}
+                  className={overContactId === f.email ? 'person-card over' : 'person-card'}
+                  data-contact-drop={f.email}
+                >
                   <div
                     className="person"
-                    onPointerDown={(e) => startDrag(f.email, e)}
-                    style={{ touchAction: 'none', opacity: dragEmail === f.email ? 0.4 : 1 }}
+                    onPointerDown={(e) => startDrag('contact', f.email, f.name, e)}
+                    style={{ touchAction: 'none', opacity: dragItem?.type === 'contact' && dragItem.id === f.email ? 0.4 : 1 }}
                   >
                     <span className="avatar" style={avatarStyle(i)}>{f.name[0]}</span>
                     <span className="person-body">
@@ -719,29 +776,31 @@ export default function App() {
                     </button>
                   </div>
                   {assignableCalendars.length > 0 && (
-                    <div style={{ margin: '8px 0 14px 56px' }}>
+                    <div style={{ marginTop: 10 }}>
                       <div className="field-label" style={{ margin: '0 0 6px' }}>Shared calendar</div>
-                      <p className="muted" style={{ fontSize: 12.5, margin: '0 0 8px' }}>
-                        {sharedCalendarsFor(f).length === 0
-                          ? 'No shared calendar found for this contact.'
-                          : `Currently: ${sharedCalendarsFor(f).map((c) => c.name).join(', ')}`}
-                      </p>
-                      <div className="cal-chip-row">
-                        {assignableCalendars.map((c) => (
-                          <button
-                            key={c.id}
-                            className={friendCalIds.includes(c.id) ? 'chip chip-sm on' : 'chip chip-sm'}
-                            onClick={() => {
-                              const next = friendCalIds.includes(c.id)
-                                ? friendCalIds.filter((id) => id !== c.id)
-                                : [...friendCalIds, c.id];
-                              setFriends(setFriendCalendars(f.email, next));
-                            }}
-                          >
-                            {c.name}
-                          </button>
-                        ))}
-                      </div>
+                      {friendCalIds.length > 0 ? (
+                        <div className="cal-chip-row">
+                          {friendCalIds.map((id) => {
+                            const cal = calendars.find((c) => c.id === id);
+                            if (!cal) return null;
+                            return (
+                              <span className="member-chip" key={id}>
+                                {cal.name}
+                                <button
+                                  aria-label={`Remove ${cal.name}`}
+                                  onClick={() => setFriends(setFriendCalendars(f.email, friendCalIds.filter((cid) => cid !== id)))}
+                                >
+                                  <Close size={10} />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : auto ? (
+                        <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Auto-detected: {auto.name}</p>
+                      ) : (
+                        <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>No shared calendar found for this contact.</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -757,9 +816,9 @@ export default function App() {
             </div>
           </div>
 
-          {dragEmail && (
+          {dragItem && (
             <div className="drag-ghost" style={{ left: dragPos.x, top: dragPos.y }}>
-              {friends.find((f) => f.email === dragEmail)?.name}
+              {dragItem.type === 'calendar' && <Dollar size={11} />} {dragItem.label}
             </div>
           )}
         </div>
