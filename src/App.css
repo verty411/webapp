@@ -626,6 +626,10 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 
 .chip.on { background: var(--s-600); border-color: var(--s-600); color: var(--s-100); }
 
+.cal-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip-sm { width: auto; text-align: center; border-radius: 999px; padding: 6px 13px; font-size: 12.5px; }
+
 .error {
   padding: 13px 16px;
   margin-bottom: 18px;

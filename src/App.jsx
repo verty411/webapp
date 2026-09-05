@@ -9,7 +9,7 @@ import {
   deleteEvent,
   deleteFile,
 } from './google';
-import { getFriends, addFriend, removeFriend } from './friends';
+import { getFriends, addFriend, removeFriend, setFriendCalendars } from './friends';
 import { getLists, addList, removeList, addMemberToList, removeMemberFromList, removeFriendEverywhere } from './lists';
 import './App.css';
 
@@ -147,6 +147,7 @@ export default function App() {
   const [selected, setSelected] = useState([]);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [sharedCalChoices, setSharedCalChoices] = useState({}); // { [email]: calendarId }, only for contacts with >1 shared calendar
 
   const [lists, setLists] = useState(() => getLists());
   const [addingList, setAddingList] = useState(false);
@@ -235,6 +236,7 @@ export default function App() {
     setAudience('them');
     setStartsAt(defaultStart());
     setRecurring('');
+    setSharedCalChoices({});
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
   }
@@ -266,38 +268,115 @@ export default function App() {
     }
   }
 
-  /** The one selected friend's own calendar, when we already have write access to it. */
-  function sharedCalendarFor(friend) {
-    if (!friend) return null;
-    return calendars.find((c) => c.id.toLowerCase() === friend.email.toLowerCase()) || null;
+  /**
+   * The calendar(s) this friend shares with the signed-in account. Manually
+   * assigned calendars (set on the People screen) always win; otherwise
+   * falls back to matching a calendar whose id is their own email address,
+   * which is how Google exposes someone's personal calendar once they've
+   * shared it with you.
+   */
+  function sharedCalendarsFor(friend) {
+    if (!friend) return [];
+    const assigned = (friend.calendarIds || []).map((id) => calendars.find((c) => c.id === id)).filter(Boolean);
+    if (assigned.length) return assigned;
+    const auto = calendars.find((c) => c.id.toLowerCase() === friend.email.toLowerCase());
+    return auto ? [auto] : [];
   }
 
+  /**
+   * Sends the video. "Just me" and "Them + me" each create a single event.
+   * "Just them" routes each recipient individually: anyone with a shared
+   * calendar gets the video added straight there (grouped so people who
+   * share the same calendar only get one event), and everyone else is
+   * bundled into a single emailed invite.
+   */
   async function send() {
     if (!uploaded) return;
     if (audience !== 'me' && selected.length === 0) return;
     setError(null);
-    const usedCalendarId = sharedCal ? sharedCal.id : calendarId || 'primary';
+    const eventTitle = title || uploaded.name;
     try {
-      const event = await createEvent({
-        calendarId: usedCalendarId,
-        title: title || uploaded.name,
-        link: uploaded.link,
-        startsAt,
-        attendeeEmails: sharedCal || audience === 'me' ? [] : selected,
-        includeSelf: audience === 'both',
-        recurrence: recurring || undefined,
-      });
+      const events = [];
+
+      if (audience === 'me') {
+        const usedCalendarId = calendarId || 'primary';
+        const event = await createEvent({
+          calendarId: usedCalendarId,
+          title: eventTitle,
+          link: uploaded.link,
+          startsAt,
+          recurrence: recurring || undefined,
+        });
+        events.push({ calendarId: usedCalendarId, eventId: event.id, eventLink: event.link, to: [], viaSharedCalendar: false });
+      } else if (audience === 'both') {
+        const usedCalendarId = calendarId || 'primary';
+        const event = await createEvent({
+          calendarId: usedCalendarId,
+          title: eventTitle,
+          link: uploaded.link,
+          startsAt,
+          attendeeEmails: selected,
+          includeSelf: true,
+          recurrence: recurring || undefined,
+        });
+        events.push({ calendarId: usedCalendarId, eventId: event.id, eventLink: event.link, to: names, viaSharedCalendar: false });
+      } else {
+        const directGroups = new Map(); // calendarId -> { calendar, names }
+        const emailOnly = [];
+
+        selected.forEach((email) => {
+          const friend = friends.find((f) => f.email === email);
+          if (!friend) return;
+          const candidates = sharedCalendarsFor(friend);
+          const chosen =
+            candidates.length > 1 ? candidates.find((c) => c.id === sharedCalChoices[email]) || candidates[0] : candidates[0];
+          if (chosen) {
+            if (!directGroups.has(chosen.id)) directGroups.set(chosen.id, { calendar: chosen, names: [] });
+            directGroups.get(chosen.id).names.push(friend.name);
+          } else {
+            emailOnly.push(friend);
+          }
+        });
+
+        for (const { calendar, names: groupNames } of directGroups.values()) {
+          const event = await createEvent({
+            calendarId: calendar.id,
+            title: eventTitle,
+            link: uploaded.link,
+            startsAt,
+            recurrence: recurring || undefined,
+          });
+          events.push({ calendarId: calendar.id, eventId: event.id, eventLink: event.link, to: groupNames, viaSharedCalendar: true });
+        }
+
+        if (emailOnly.length > 0) {
+          const usedCalendarId = calendarId || 'primary';
+          const event = await createEvent({
+            calendarId: usedCalendarId,
+            title: eventTitle,
+            link: uploaded.link,
+            startsAt,
+            attendeeEmails: emailOnly.map((f) => f.email),
+            recurrence: recurring || undefined,
+          });
+          events.push({
+            calendarId: usedCalendarId,
+            eventId: event.id,
+            eventLink: event.link,
+            to: emailOnly.map((f) => f.name),
+            viaSharedCalendar: false,
+          });
+        }
+      }
+
       setSent(
         saveSent([
           {
             id: uploaded.id,
-            name: title || uploaded.name,
+            name: eventTitle,
             link: uploaded.link,
-            eventLink: event.link,
-            eventId: event.id,
-            eventCalendarId: usedCalendarId,
+            events,
             to: names,
-            sharedCalendar: Boolean(sharedCal),
             when: new Date(startsAt).toISOString(),
             sentAt: new Date().toISOString(),
           },
@@ -310,12 +389,14 @@ export default function App() {
     }
   }
 
-  /** Removes the calendar event for a sent video, then offers to delete the video too. */
+  /** Removes every calendar event tied to a sent video, then offers to delete the video too. */
   async function removeFromCalendar(v) {
     setError(null);
     try {
-      await deleteEvent(v.eventCalendarId, v.eventId);
-      let updated = sent.map((s) => (s.id === v.id ? { ...s, eventLink: null, eventId: null, eventCalendarId: null } : s));
+      for (const ev of v.events || []) {
+        await deleteEvent(ev.calendarId, ev.eventId);
+      }
+      let updated = sent.map((s) => (s.id === v.id ? { ...s, events: [] } : s));
       setSent(saveSent(updated));
       if (window.confirm(`Also delete "${v.name}" from Drive? This can't be undone.`)) {
         await deleteFile(v.id);
@@ -348,9 +429,41 @@ export default function App() {
     if (uploaded) setSheet('share');
   }
 
+  function isListSelected(list) {
+    return list.memberEmails.length > 0 && list.memberEmails.every((e) => selected.includes(e));
+  }
+
+  function toggleList(list) {
+    if (isListSelected(list)) {
+      setSelected((s) => s.filter((e) => !list.memberEmails.includes(e)));
+    } else {
+      setSelected((s) => [...new Set([...s, ...list.memberEmails])]);
+    }
+  }
+
+  const assignableCalendars = calendars.filter((c) => !c.primary);
   const names = audience === 'me' ? [] : friends.filter((f) => selected.includes(f.email)).map((f) => f.name);
-  const soloFriend = audience === 'them' && selected.length === 1 ? friends.find((f) => f.email === selected[0]) : null;
-  const sharedCal = sharedCalendarFor(soloFriend);
+  const selectedFriends = audience === 'them' ? selected.map((email) => friends.find((f) => f.email === email)).filter(Boolean) : [];
+
+  // Default a choice for any selected contact with more than one shared calendar and no pick yet.
+  useEffect(() => {
+    if (audience !== 'them') return;
+    setSharedCalChoices((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      selected.forEach((email) => {
+        const friend = friends.find((f) => f.email === email);
+        const candidates = sharedCalendarsFor(friend);
+        if (candidates.length > 1 && !candidates.some((c) => c.id === next[email])) {
+          next[email] = candidates[0].id;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected.join(','), audience]);
+
   const upcoming = sent.filter((v) => v.when && new Date(v.when) > new Date()).sort((a, b) => new Date(a.when) - new Date(b.when))[0];
   const done = progress >= 100;
   const mb = file ? (file.size / 1024 / 1024).toFixed(1) : null;
@@ -483,8 +596,12 @@ export default function App() {
                   <span>{metaFor(v)}</span>
                   <div className="card-links">
                     <a className="link-btn" href={v.link} target="_blank" rel="noreferrer">Open video</a>
-                    {v.eventLink && <a className="link-btn" href={v.eventLink} target="_blank" rel="noreferrer">Open reminder</a>}
-                    {v.eventId && v.eventCalendarId && (
+                    {(v.events || []).map((ev) => (
+                      <a key={ev.eventId} className="link-btn" href={ev.eventLink} target="_blank" rel="noreferrer">
+                        Open {ev.to.length ? listNames(ev.to) : 'reminder'}
+                      </a>
+                    ))}
+                    {(v.events || []).length > 0 && (
                       <button className="link-btn" onClick={() => removeFromCalendar(v)}>Remove from calendar</button>
                     )}
                     <button className="link-btn" onClick={() => copy(v.link)}>{copied ? 'Copied' : 'Copy link'}</button>
@@ -574,32 +691,61 @@ export default function App() {
           <div className="section-head"><h3>Everyone</h3></div>
           <div className="list" style={{ marginBottom: 22 }}>
             {friends.length === 0 && <p className="empty">No one saved yet.</p>}
-            {friends.map((f, i) => (
-              <div
-                className="person"
-                key={f.email}
-                onPointerDown={(e) => startDrag(f.email, e)}
-                style={{ touchAction: 'none', opacity: dragEmail === f.email ? 0.4 : 1 }}
-              >
-                <span className="avatar" style={avatarStyle(i)}>{f.name[0]}</span>
-                <span className="person-body">
-                  <strong>{f.name}</strong>
-                  <span>{f.email}</span>
-                </span>
-                <button
-                  className="forget"
-                  title={`Forget ${f.name}`}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => {
-                    setFriends(removeFriend(f.email));
-                    setLists(removeFriendEverywhere(f.email));
-                    setSelected((s) => s.filter((e) => e !== f.email));
-                  }}
-                >
-                  <Close />
-                </button>
-              </div>
-            ))}
+            {friends.map((f, i) => {
+              const friendCalIds = f.calendarIds || [];
+              return (
+                <div key={f.email}>
+                  <div
+                    className="person"
+                    onPointerDown={(e) => startDrag(f.email, e)}
+                    style={{ touchAction: 'none', opacity: dragEmail === f.email ? 0.4 : 1 }}
+                  >
+                    <span className="avatar" style={avatarStyle(i)}>{f.name[0]}</span>
+                    <span className="person-body">
+                      <strong>{f.name}</strong>
+                      <span>{f.email}</span>
+                    </span>
+                    <button
+                      className="forget"
+                      title={`Forget ${f.name}`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => {
+                        setFriends(removeFriend(f.email));
+                        setLists(removeFriendEverywhere(f.email));
+                        setSelected((s) => s.filter((e) => e !== f.email));
+                      }}
+                    >
+                      <Close />
+                    </button>
+                  </div>
+                  {assignableCalendars.length > 0 && (
+                    <div style={{ margin: '8px 0 14px 56px' }}>
+                      <div className="field-label" style={{ margin: '0 0 6px' }}>Shared calendar</div>
+                      <div className="cal-chip-row">
+                        {assignableCalendars.map((c) => {
+                          const auto = !friendCalIds.length && c.id.toLowerCase() === f.email.toLowerCase();
+                          return (
+                            <button
+                              key={c.id}
+                              className={friendCalIds.includes(c.id) ? 'chip chip-sm on' : 'chip chip-sm'}
+                              onClick={() => {
+                                const next = friendCalIds.includes(c.id)
+                                  ? friendCalIds.filter((id) => id !== c.id)
+                                  : [...friendCalIds, c.id];
+                                setFriends(setFriendCalendars(f.email, next));
+                              }}
+                            >
+                              {c.name}
+                              {auto ? ' (auto)' : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="add-panel">
             <h3>Add someone</h3>
@@ -671,6 +817,22 @@ export default function App() {
                   <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Send To Me And...</button>
                 </div>
 
+                {audience !== 'me' && lists.length > 0 && (
+                  <div className="cal-chip-row" style={{ marginBottom: 10 }}>
+                    {lists.map((l) => (
+                      <button
+                        key={l.id}
+                        className={isListSelected(l) ? 'chip chip-sm on' : 'chip chip-sm'}
+                        onClick={() => toggleList(l)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <Dollar size={11} />
+                        {l.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {audience !== 'me' && (
                   <div className="pickers">
                     {friends.map((f, i) => {
@@ -696,12 +858,38 @@ export default function App() {
                   </div>
                 )}
 
-                {soloFriend && (
-                  <p className="muted" style={{ fontSize: 13, margin: '-8px 0 16px' }}>
-                    {sharedCal
-                      ? `Found ${soloFriend.name}'s shared calendar — this goes straight there, no email needed.`
-                      : `No shared calendar found for ${soloFriend.name} — we'll email them the invite instead.`}
-                  </p>
+                {audience === 'them' && selectedFriends.length > 0 && (
+                  <div style={{ margin: '-6px 0 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {selectedFriends.map((f) => {
+                      const candidates = sharedCalendarsFor(f);
+                      return (
+                        <div key={f.email}>
+                          <p className="muted" style={{ fontSize: 13, fontWeight: 600, margin: '0 0 5px' }}>{f.name}</p>
+                          {candidates.length === 0 && (
+                            <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                              No shared calendars found (reminder sent by email)
+                            </p>
+                          )}
+                          {candidates.length === 1 && (
+                            <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                              Goes straight to their "{candidates[0].name}" calendar — no email needed.
+                            </p>
+                          )}
+                          {candidates.length > 1 && (
+                            <select
+                              className="input"
+                              value={sharedCalChoices[f.email] || candidates[0].id}
+                              onChange={(e) => setSharedCalChoices((prev) => ({ ...prev, [f.email]: e.target.value }))}
+                            >
+                              {candidates.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
 
                 <div className="panel">
@@ -752,10 +940,18 @@ export default function App() {
                     const repeats = recurring ? `, repeating ${recurring === 'WEEKLY' ? 'weekly' : 'monthly'}` : '';
                     if (audience === 'me') return `It's on your calendar for ${when}${repeats}.`;
                     const who = listNames(names) || 'They';
-                    if (sharedCal) return `Added to ${who}'s shared calendar for ${when}${repeats} — no email needed.`;
-                    return audience === 'both'
-                      ? `${who} and you will see it on the calendar for ${when}${repeats}.`
-                      : `${who} will get an emailed invite for ${when}${repeats}.`;
+                    if (audience === 'both') return `${who} and you will see it on the calendar for ${when}${repeats}.`;
+
+                    const lastEvents = sent[0]?.events || [];
+                    const direct = lastEvents.filter((e) => e.viaSharedCalendar);
+                    const emailed = lastEvents.filter((e) => !e.viaSharedCalendar);
+                    const parts = [];
+                    if (direct.length) {
+                      const directNames = listNames(direct.flatMap((e) => e.to));
+                      parts.push(`added straight to ${directNames}'s shared calendar${direct.reduce((n, e) => n + e.to.length, 0) > 1 ? 's' : ''}`);
+                    }
+                    if (emailed.length) parts.push(`emailed an invite to ${listNames(emailed.flatMap((e) => e.to))}`);
+                    return `${parts.join(', and ')} for ${when}${repeats}.`;
                   })()}
                 </p>
                 <div className="sheet-actions">
