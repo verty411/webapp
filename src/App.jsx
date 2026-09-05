@@ -526,6 +526,10 @@ export default function App() {
                 <p>It's up in your Drive. Pick where this goes and when.</p>
                 {error && <p className="error" role="alert">{error}</p>}
 
+                <div className="field-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Play size={13} color="var(--muted)" />
+                  Name Video (optional)
+                </div>
                 <input
                   className="input"
                   value={title}
@@ -540,8 +544,8 @@ export default function App() {
 
                 <div className="when-chips" style={{ marginBottom: 18 }}>
                   <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Send To...</button>
-                  <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Send To Me And...</button>
                   <button className={audience === 'me' ? 'chip on' : 'chip'} onClick={() => setAudience('me')}>Send To Me</button>
+                  <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Send To Me And...</button>
                 </div>
 
                 {audience !== 'me' && (
