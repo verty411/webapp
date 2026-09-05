@@ -456,7 +456,7 @@ export default function App() {
       {screen === 'people' && (
         <div className="screen">
           <div className="back-head">
-            <button className="icon-btn" onClick={() => setScreen(uploaded ? 'home' : 'home')}><Back /></button>
+            <button className="icon-btn" onClick={() => { setScreen('home'); if (uploaded) setSheet('share'); }}><Back /></button>
             <h2>Your people</h2>
           </div>
           <p className="muted" style={{ fontSize: 13.5, margin: '0 0 22px 56px' }}>
@@ -539,9 +539,9 @@ export default function App() {
                 </p>
 
                 <div className="when-chips" style={{ marginBottom: 18 }}>
-                  <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Just them</button>
-                  <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Them + me</button>
-                  <button className={audience === 'me' ? 'chip on' : 'chip'} onClick={() => setAudience('me')}>Just me</button>
+                  <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Send To...</button>
+                  <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Send To Me And...</button>
+                  <button className={audience === 'me' ? 'chip on' : 'chip'} onClick={() => setAudience('me')}>Send To Me</button>
                 </div>
 
                 {audience !== 'me' && (
@@ -562,7 +562,7 @@ export default function App() {
                         </button>
                       );
                     })}
-                    <button className="picker" onClick={() => setScreen('people')}>
+                    <button className="picker" onClick={() => { setSheet(null); setScreen('people'); }}>
                       <span className="avatar new"><Plus /></span>
                       <b>Someone</b>
                     </button>
