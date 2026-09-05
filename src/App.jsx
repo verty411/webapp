@@ -145,6 +145,7 @@ export default function App() {
 
   const [friends, setFriends] = useState(() => getFriends());
   const [selected, setSelected] = useState([]);
+  const [selectedListIds, setSelectedListIds] = useState([]); // explicit list picks only — never inferred from `selected`
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [sharedCalChoices, setSharedCalChoices] = useState({}); // { [email]: calendarId }, only for contacts with >1 shared calendar
@@ -257,6 +258,7 @@ export default function App() {
     setProgress(0);
     setTitle('');
     setSelected([]);
+    setSelectedListIds([]);
     setAudience('them');
     setStartsAt(defaultStart());
     setRecurring('');
@@ -453,14 +455,17 @@ export default function App() {
     if (uploaded) setSheet('share');
   }
 
+  /** Whether this list was explicitly picked — never inferred from individually selected people. */
   function isListSelected(list) {
-    return list.memberEmails.length > 0 && list.memberEmails.every((e) => selected.includes(e));
+    return selectedListIds.includes(list.id);
   }
 
   function toggleList(list) {
-    if (isListSelected(list)) {
+    if (selectedListIds.includes(list.id)) {
+      setSelectedListIds((ids) => ids.filter((id) => id !== list.id));
       setSelected((s) => s.filter((e) => !list.memberEmails.includes(e)));
     } else {
+      setSelectedListIds((ids) => [...ids, list.id]);
       setSelected((s) => [...new Set([...s, ...list.memberEmails])]);
     }
   }
