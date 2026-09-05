@@ -721,25 +721,26 @@ export default function App() {
                   {assignableCalendars.length > 0 && (
                     <div style={{ margin: '8px 0 14px 56px' }}>
                       <div className="field-label" style={{ margin: '0 0 6px' }}>Shared calendar</div>
+                      <p className="muted" style={{ fontSize: 12.5, margin: '0 0 8px' }}>
+                        {sharedCalendarsFor(f).length === 0
+                          ? 'No shared calendar found for this contact.'
+                          : `Currently: ${sharedCalendarsFor(f).map((c) => c.name).join(', ')}`}
+                      </p>
                       <div className="cal-chip-row">
-                        {assignableCalendars.map((c) => {
-                          const auto = !friendCalIds.length && c.id.toLowerCase() === f.email.toLowerCase();
-                          return (
-                            <button
-                              key={c.id}
-                              className={friendCalIds.includes(c.id) ? 'chip chip-sm on' : 'chip chip-sm'}
-                              onClick={() => {
-                                const next = friendCalIds.includes(c.id)
-                                  ? friendCalIds.filter((id) => id !== c.id)
-                                  : [...friendCalIds, c.id];
-                                setFriends(setFriendCalendars(f.email, next));
-                              }}
-                            >
-                              {c.name}
-                              {auto ? ' (auto)' : ''}
-                            </button>
-                          );
-                        })}
+                        {assignableCalendars.map((c) => (
+                          <button
+                            key={c.id}
+                            className={friendCalIds.includes(c.id) ? 'chip chip-sm on' : 'chip chip-sm'}
+                            onClick={() => {
+                              const next = friendCalIds.includes(c.id)
+                                ? friendCalIds.filter((id) => id !== c.id)
+                                : [...friendCalIds, c.id];
+                              setFriends(setFriendCalendars(f.email, next));
+                            }}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -858,7 +859,7 @@ export default function App() {
                   </div>
                 )}
 
-                {audience === 'them' && selectedFriends.length > 0 && (
+                {audience === 'them' && selectedFriends.length > 0 && !lists.some(isListSelected) && (
                   <div style={{ margin: '-6px 0 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {selectedFriends.map((f) => {
                       const candidates = sharedCalendarsFor(f);
