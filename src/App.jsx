@@ -162,7 +162,42 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
 
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installed, setInstalled] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
+
+  /** Covers Android/desktop Chrome's native install prompt, iOS's manual-only path, and everything else. */
+  useEffect(() => {
+    setInstalled(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
+    function onBeforeInstall(e) {
+      e.preventDefault();
+      setInstallPrompt(e);
+    }
+    function onInstalled() {
+      setInstalled(true);
+      setInstallPrompt(null);
+    }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  async function handleInstallClick() {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice.outcome === 'accepted') setInstalled(true);
+      setInstallPrompt(null);
+    } else {
+      setShowInstallHelp((v) => !v);
+    }
+  }
 
   /**
    * Drag a contact onto a list to add them, or a calendar onto a list (applies
@@ -503,6 +538,28 @@ export default function App() {
     return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${to}`;
   }
 
+  /** "Add to Home Screen" — a plain button plus a plain-language line, since most people have never installed a PWA. */
+  function renderInstall() {
+    if (installed) return null;
+    return (
+      <div style={{ marginTop: 18, textAlign: 'center' }}>
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+          Add VideoShare to your home screen and it opens like a regular app — its own icon, no browser bar, one tap.
+        </p>
+        <button className="btn btn-secondary btn-small" onClick={handleInstallClick}>
+          {installPrompt ? 'Install App' : 'Add to Home Screen'}
+        </button>
+        {showInstallHelp && !installPrompt && (
+          <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
+            {isIos
+              ? 'Tap the Share button in Safari’s toolbar, then "Add to Home Screen."'
+              : 'Look for "Add to Home Screen" or "Install app" in your browser’s menu.'}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   /* ------------------------------------------------------------- render */
 
   if (screen === 'signin') {
@@ -520,6 +577,7 @@ export default function App() {
             {error && <p className="error" role="alert">{error}</p>}
             <button className="btn btn-primary" onClick={connect}>Continue with Google</button>
             <p className="fine">Your videos stay in your own Drive. We only ever add the ones you record here.</p>
+            {renderInstall()}
           </div>
         </div>
       </main>
@@ -1037,6 +1095,12 @@ export default function App() {
                   <button className="btn btn-primary" onClick={connect}>Continue with Google</button>
                   <button className="btn btn-secondary" onClick={() => setSheet(uploaded ? 'share' : null)}>Not now</button>
                 </div>
+              </div>
+            )}
+
+            {!installed && (
+              <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--divider)' }}>
+                {renderInstall()}
               </div>
             )}
           </div>
