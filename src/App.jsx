@@ -302,6 +302,24 @@ export default function App() {
     setPreviewUrl(null);
   }
 
+  /** Deletes the just-uploaded video and drops back to the record screen. */
+  async function discardUpload() {
+    if (!uploaded) {
+      setSheet(null);
+      reset();
+      return;
+    }
+    setError(null);
+    try {
+      await deleteFile(uploaded.id);
+    } catch (e) {
+      fail(e);
+      return;
+    }
+    setSheet(null);
+    reset();
+  }
+
   function record() {
     if (expired) return setSheet('reauth');
     setError(null);
@@ -914,7 +932,12 @@ export default function App() {
 
             {sheet === 'share' && (
               <div>
-                <h2>Who's it for?</h2>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <h2 style={{ margin: 0 }}>Who's it for?</h2>
+                  <button className="icon-btn" title="Discard this video" onClick={discardUpload}>
+                    <Close size={16} />
+                  </button>
+                </div>
                 <p>It's up in your Drive. Pick where this goes and when.</p>
                 {error && <p className="error" role="alert">{error}</p>}
 
