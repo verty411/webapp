@@ -125,6 +125,13 @@ const Shield = ({ size = 18, color }) => (
   </svg>
 );
 
+const CheckboxIcon = ({ size = 20, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke={color || 'currentColor'}>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
+    <path d="M7.5 12.3 10.5 15.3 16.5 8.7" />
+  </svg>
+);
+
 const Dollar = ({ size = 13 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke="var(--gold)">
     <path d="M12 2v20M16.5 6.5c0-1.7-2-3-4.5-3s-4.5 1.4-4.5 3 2 2.7 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" />
@@ -616,11 +623,15 @@ export default function App() {
           <div>
             <div className="mark"><Camera size={30} color="#f5ead8" /></div>
             <h1>Send a video. Set a time.</h1>
-            <p>Record something, pick who should see it, and they get a reminder with the link attached.</p>
+            <div className="steps-list">
+              <div className="step-row"><CheckboxIcon /><span>Record Video</span></div>
+              <div className="step-row"><CheckboxIcon /><span>Pick Contact</span></div>
+              <div className="step-row"><CheckboxIcon /><span>Add to Calendar</span></div>
+            </div>
           </div>
 
           <div className="banner banner-sage">
-            <span className="banner-icon banner-icon-sage"><Shield /></span>
+            <span className="banner-icon banner-icon-sage"><Shield size={24} /></span>
             <div className="banner-text banner-text-sage">
               <span>Your videos and contacts live in your own Google Drive — nothing passes through our servers.</span>
             </div>

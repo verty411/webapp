@@ -194,6 +194,19 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 .signin h1 { font-size: 40px; max-width: 290px; margin-bottom: 14px; }
 .signin p { font-size: 16px; max-width: 280px; margin: 0; color: rgba(32, 30, 29, 0.7); }
 
+.steps-list { display: flex; flex-direction: column; gap: 11px; }
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.step-row svg { flex: 0 0 auto; color: var(--a-600); }
+
 .mark {
   width: 60px;
   height: 60px;
@@ -250,9 +263,9 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 .banner-text strong { display: block; font-size: 14.5px; color: var(--a-900); }
 .banner-text span { font-size: 12.5px; color: var(--a-800); }
 
-.banner-sage { background: var(--s-200); }
-.banner-icon-sage { background: var(--s-600); color: var(--s-100); }
-.banner-text-sage span { color: var(--s-800); font-size: 13px; line-height: 1.45; }
+.banner-sage { background: var(--s-200); padding: 18px; }
+.banner-icon-sage { width: 46px; height: 46px; background: var(--s-600); color: var(--s-100); }
+.banner-text-sage span { color: var(--s-800); font-size: 17px; font-weight: 600; line-height: 1.4; }
 
 .ring-wrap {
   display: flex;
