@@ -408,6 +408,7 @@ export default function App() {
     if (audience !== 'me' && selected.length === 0) return;
     setError(null);
     const eventTitle = title || uploaded.name;
+    const attachment = { url: uploaded.link, title: eventTitle, mimeType: uploaded.mimeType, iconLink: uploaded.iconLink };
     try {
       const events = [];
 
@@ -419,6 +420,7 @@ export default function App() {
           link: uploaded.link,
           startsAt,
           recurrence: recurring || undefined,
+          attachment,
         });
         events.push({ calendarId: usedCalendarId, eventId: event.id, eventLink: event.link, to: [], viaSharedCalendar: false });
       } else if (audience === 'both') {
@@ -431,6 +433,7 @@ export default function App() {
           attendeeEmails: selected,
           includeSelf: true,
           recurrence: recurring || undefined,
+          attachment,
         });
         events.push({ calendarId: usedCalendarId, eventId: event.id, eventLink: event.link, to: names, viaSharedCalendar: false });
       } else {
@@ -458,6 +461,7 @@ export default function App() {
             link: uploaded.link,
             startsAt,
             recurrence: recurring || undefined,
+            attachment,
           });
           events.push({ calendarId: calendar.id, eventId: event.id, eventLink: event.link, to: groupNames, viaSharedCalendar: true });
         }
@@ -471,6 +475,7 @@ export default function App() {
             startsAt,
             attendeeEmails: emailOnly.map((f) => f.email),
             recurrence: recurring || undefined,
+            attachment,
           });
           events.push({
             calendarId: usedCalendarId,

@@ -138,7 +138,7 @@ export async function uploadVideo(file, name, onProgress) {
   const metadata = { name, mimeType: file.type || 'video/mp4' };
 
   const start = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink',
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,iconLink,mimeType',
     {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -185,6 +185,8 @@ export async function uploadVideo(file, name, onProgress) {
     id: file_.id,
     name: file_.name,
     link: file_.webViewLink || `https://drive.google.com/file/d/${file_.id}/view`,
+    iconLink: file_.iconLink,
+    mimeType: file_.mimeType,
   };
 }
 
@@ -209,7 +211,10 @@ export async function listCalendars() {
  * attendeeEmails invites those people; includeSelf also lists the organizer
  * as an attendee (rather than just the implicit owner) so "them + me" reads
  * the same as any other invite on the calendar. recurrence is a plain
- * frequency ('WEEKLY' | 'MONTHLY') that gets turned into an RRULE.
+ * frequency ('WEEKLY' | 'MONTHLY') that gets turned into an RRULE. attachment
+ * (optional {url, title, mimeType, iconLink}) adds the video as a proper
+ * Drive attachment card — Calendar has no way to embed a playable video
+ * directly, but a named, iconed attachment reads better than a bare link.
  */
 export async function createEvent({
   calendarId,
@@ -220,6 +225,7 @@ export async function createEvent({
   attendeeEmails = [],
   includeSelf = false,
   recurrence,
+  attachment,
 }) {
   const start = new Date(startsAt);
   const end = new Date(start.getTime() + 30 * 60 * 1000);
@@ -229,8 +235,11 @@ export async function createEvent({
     ...attendeeEmails.filter(Boolean).map((email) => ({ email })),
   ];
 
+  const query = new URLSearchParams({ sendUpdates: 'all' });
+  if (attachment) query.set('supportsAttachments', 'true');
+
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${query}`,
     {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
@@ -242,6 +251,18 @@ export async function createEvent({
         reminders: { useDefault: true },
         ...(attendees.length ? { attendees } : {}),
         ...(recurrence ? { recurrence: [`RRULE:FREQ=${recurrence}`] } : {}),
+        ...(attachment
+          ? {
+              attachments: [
+                {
+                  fileUrl: attachment.url,
+                  title: attachment.title,
+                  mimeType: attachment.mimeType,
+                  iconLink: attachment.iconLink,
+                },
+              ],
+            }
+          : {}),
       }),
     }
   );
