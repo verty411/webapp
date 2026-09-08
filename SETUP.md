@@ -1,4 +1,4 @@
-# VideoShare — setup
+# VideoReminders — setup
 
 ## 1. Copy the files in
 

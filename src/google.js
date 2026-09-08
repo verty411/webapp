@@ -294,7 +294,7 @@ export function downloadInvite({ title, link, startsAt, notes }) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//VideoShare//EN',
+    'PRODID:-//VideoReminders//EN',
     'BEGIN:VEVENT',
     `UID:${crypto.randomUUID()}`,
     `DTSTAMP:${icsStamp(new Date())}`,

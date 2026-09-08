@@ -562,7 +562,7 @@ export default function App() {
     return (
       <div style={{ marginTop: 18, textAlign: 'center' }}>
         <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
-          Add VideoShare to your home screen and it opens like a regular app — its own icon, no browser bar, one tap.
+          Add VideoReminders to your home screen and it opens like a regular app — its own icon, no browser bar, one tap.
         </p>
         <button className="btn btn-secondary btn-small" onClick={handleInstallClick}>
           {installPrompt ? 'Install App' : 'Add to Home Screen'}

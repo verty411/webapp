@@ -1,6 +1,6 @@
 {
-  "name": "VideoShare",
-  "short_name": "VideoShare",
+  "name": "VideoReminders",
+  "short_name": "VideoReminders",
   "description": "Send a video, set a time, and it lands on the calendar.",
   "start_url": "/",
   "scope": "/",
