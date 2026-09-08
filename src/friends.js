@@ -33,3 +33,9 @@ export function removeFriend(email) {
   localStorage.setItem(KEY, JSON.stringify(next));
   return next;
 }
+
+/** Overwrites the whole list — used to restore a backup pulled from Drive. */
+export function replaceFriends(list) {
+  localStorage.setItem(KEY, JSON.stringify(list));
+  return list;
+}

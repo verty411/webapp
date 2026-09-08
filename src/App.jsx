@@ -11,6 +11,7 @@ import {
 } from './google';
 import { getFriends, addFriend, removeFriend, setFriendCalendars } from './friends';
 import { getLists, addList, removeList, addMemberToList, removeMemberFromList, removeFriendEverywhere } from './lists';
+import { hydrateFromDrive, pushToDrive } from './sync';
 import './App.css';
 
 /* -------------------------------------------------------------- helpers */
@@ -257,11 +258,29 @@ export default function App() {
       .then((cals) => {
         setCalendars(cals);
         setScreen('home');
+        syncFromDrive();
       })
       .catch(() => {
         // Saved token was revoked or stale — stay on sign-in.
       });
   }, []);
+
+  /** Pulls a Drive backup of friends/lists into local state if it's newer or local storage is empty. */
+  function syncFromDrive() {
+    hydrateFromDrive().then((replaced) => {
+      if (replaced) {
+        setFriends(getFriends());
+        setLists(getLists());
+      }
+    });
+  }
+
+  // Keeps the Drive backup current whenever friends or lists change locally.
+  useEffect(() => {
+    if (screen === 'signin') return;
+    const t = setTimeout(() => pushToDrive(), 800);
+    return () => clearTimeout(t);
+  }, [friends, lists, screen]);
 
   /** Every Google call funnels through here so an expired hour surfaces the same way. */
   function fail(e) {
@@ -282,6 +301,7 @@ export default function App() {
       setExpired(false);
       setScreen('home');
       setSheet(uploaded || file ? 'share' : null);
+      syncFromDrive();
     } catch (e) {
       setError(e.message);
     }
@@ -594,7 +614,10 @@ export default function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {error && <p className="error" role="alert">{error}</p>}
             <button className="btn btn-primary" onClick={connect}>Continue with Google</button>
-            <p className="fine">Your videos stay in your own Drive. We only ever add the ones you record here.</p>
+            <p className="fine">
+              Your videos and contacts live in your own Google Drive — nothing passes through our
+              servers, because there aren't any.
+            </p>
             {renderInstall()}
           </div>
         </div>

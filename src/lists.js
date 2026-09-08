@@ -43,3 +43,8 @@ export function removeMemberFromList(id, email) {
 export function removeFriendEverywhere(email) {
   return save(getLists().map((l) => ({ ...l, memberEmails: l.memberEmails.filter((e) => e !== email) })));
 }
+
+/** Overwrites the whole list — used to restore a backup pulled from Drive. */
+export function replaceLists(list) {
+  return save(list);
+}

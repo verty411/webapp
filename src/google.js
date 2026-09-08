@@ -273,6 +273,65 @@ export async function deleteFile(fileId) {
   await checkResponse(res, 'Deleting the video');
 }
 
+/* ------------------------------------------------------------ Drive sync */
+// Backs up friends/lists to a small JSON file this app creates in the
+// user's own Drive, so they survive the browser clearing local storage
+// (e.g. iOS Safari's 7-day cap on an inactive site's storage). Works
+// entirely within the drive.file scope already granted — no extra
+// permission needed, since it's a file the app itself creates.
+
+const SYNC_FILE_NAME = 'videoreminders-data.json';
+
+/** Finds the app's own data-sync file in Drive, if one has been created before. */
+export async function findSyncFile() {
+  const q = encodeURIComponent(`name='${SYNC_FILE_NAME}' and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`, {
+    headers: authHeaders(),
+  });
+  const data = await checkResponse(res, 'Looking for your saved contacts');
+  return data.files?.[0] || null;
+}
+
+export async function readSyncFile(fileId) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: authHeaders(),
+  });
+  return checkResponse(res, 'Reading your saved contacts');
+}
+
+export async function createSyncFile(data) {
+  const boundary = 'videoreminders-sync';
+  const metadata = JSON.stringify({ name: SYNC_FILE_NAME, mimeType: 'application/json' });
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    metadata,
+    `--${boundary}`,
+    'Content-Type: application/json',
+    '',
+    JSON.stringify(data),
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': `multipart/related; boundary=${boundary}` }),
+    body,
+  });
+  const file = await checkResponse(res, 'Saving your contacts');
+  return file.id;
+}
+
+export async function updateSyncFile(fileId, data) {
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  await checkResponse(res, 'Saving your contacts');
+}
+
 /* ------------------------------------------------------------------ ICS */
 
 function icsEscape(text = '') {
