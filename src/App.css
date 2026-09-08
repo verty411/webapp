@@ -204,8 +204,6 @@ a { color: var(--a-700); text-underline-offset: 3px; }
   margin-bottom: 34px;
 }
 
-.fine { font-size: 13px; text-align: center; margin: 0; color: var(--muted); }
-
 /* ----------------------------------------------------------------- home */
 
 .head {
@@ -251,6 +249,10 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 .banner-text { flex: 1 1 auto; min-width: 0; }
 .banner-text strong { display: block; font-size: 14.5px; color: var(--a-900); }
 .banner-text span { font-size: 12.5px; color: var(--a-800); }
+
+.banner-sage { background: var(--s-200); }
+.banner-icon-sage { background: var(--s-600); color: var(--s-100); }
+.banner-text-sage span { color: var(--s-800); font-size: 13px; line-height: 1.45; }
 
 .ring-wrap {
   display: flex;

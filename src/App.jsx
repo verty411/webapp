@@ -118,6 +118,13 @@ const Clock = ({ size = 19 }) => (
   </svg>
 );
 
+const Shield = ({ size = 18, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke={color || 'currentColor'}>
+    <path d="M12 3.5 19 6.5v5.5c0 5-3 8-7 9-4-1-7-4-7-9V6.5z" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+);
+
 const Dollar = ({ size = 13 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke="var(--gold)">
     <path d="M12 2v20M16.5 6.5c0-1.7-2-3-4.5-3s-4.5 1.4-4.5 3 2 2.7 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" />
@@ -611,13 +618,17 @@ export default function App() {
             <h1>Send a video. Set a time.</h1>
             <p>Record something, pick who should see it, and they get a reminder with the link attached.</p>
           </div>
+
+          <div className="banner banner-sage">
+            <span className="banner-icon banner-icon-sage"><Shield /></span>
+            <div className="banner-text banner-text-sage">
+              <span>Your videos and contacts live in your own Google Drive — nothing passes through our servers.</span>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {error && <p className="error" role="alert">{error}</p>}
             <button className="btn btn-primary" onClick={connect}>Continue with Google</button>
-            <p className="fine">
-              Your videos and contacts live in your own Google Drive — nothing passes through our
-              servers, because there aren't any.
-            </p>
             {renderInstall()}
           </div>
         </div>
