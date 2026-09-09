@@ -606,6 +606,90 @@ export default function App() {
     return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })} · ${to}`;
   }
 
+  /**
+   * Lists + contact picker shown right under whichever "Send to" chip is
+   * active. showCalendarInfo is only true for "Just them," since the
+   * per-contact shared-calendar breakdown doesn't apply to "Them + me."
+   */
+  function renderAudiencePicker(showCalendarInfo) {
+    return (
+      <div style={{ margin: '4px 0 4px' }}>
+        {lists.length > 0 && (
+          <div className="cal-chip-row" style={{ marginBottom: 10 }}>
+            {lists.map((l) => (
+              <button
+                key={l.id}
+                className={isListSelected(l) ? 'chip chip-sm on' : 'chip chip-sm'}
+                onClick={() => toggleList(l)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <Dollar size={11} />
+                {l.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="pickers">
+          {friends.map((f, i) => {
+            const on = selected.includes(f.email);
+            return (
+              <button
+                key={f.email}
+                className={on ? 'picker on' : 'picker'}
+                onClick={() => setSelected(on ? selected.filter((e) => e !== f.email) : [...selected, f.email])}
+              >
+                <span className="avatar" style={avatarStyle(i)}>
+                  {f.name[0]}
+                  {on && <span className="tick"><Check size={11} color="#f0fae1" /></span>}
+                </span>
+                <b>{f.name}</b>
+              </button>
+            );
+          })}
+          <button className="picker" onClick={() => { setSheet(null); setScreen('people'); }}>
+            <span className="avatar new"><Plus /></span>
+            <b>Someone</b>
+          </button>
+        </div>
+
+        {showCalendarInfo && selectedFriends.length > 0 && !lists.some(isListSelected) && (
+          <div style={{ margin: '10px 0 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {selectedFriends.map((f) => {
+              const candidates = sharedCalendarsFor(f);
+              return (
+                <div key={f.email}>
+                  <p className="muted" style={{ fontSize: 13, fontWeight: 600, margin: '0 0 5px' }}>{f.name}</p>
+                  {candidates.length === 0 && (
+                    <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                      No shared calendars found (reminder sent by email)
+                    </p>
+                  )}
+                  {candidates.length === 1 && (
+                    <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+                      Goes straight to their "{candidates[0].name}" calendar — no email needed.
+                    </p>
+                  )}
+                  {candidates.length > 1 && (
+                    <select
+                      className="input"
+                      value={sharedCalChoices[f.email] || candidates[0].id}
+                      onChange={(e) => setSharedCalChoices((prev) => ({ ...prev, [f.email]: e.target.value }))}
+                    >
+                      {candidates.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   /** "Add to Home Screen" — a plain button plus a plain-language line, since most people have never installed a PWA. */
   function renderInstall() {
     if (installed) return null;
@@ -1076,84 +1160,13 @@ export default function App() {
 
                 <div className="when-chips" style={{ marginBottom: 18 }}>
                   <button className={audience === 'them' ? 'chip on' : 'chip'} onClick={() => setAudience('them')}>Send To...</button>
+                  {audience === 'them' && renderAudiencePicker(true)}
+
                   <button className={audience === 'me' ? 'chip on' : 'chip'} onClick={() => setAudience('me')}>Send To Me</button>
+
                   <button className={audience === 'both' ? 'chip on' : 'chip'} onClick={() => setAudience('both')}>Send To Me And...</button>
+                  {audience === 'both' && renderAudiencePicker(false)}
                 </div>
-
-                {audience !== 'me' && lists.length > 0 && (
-                  <div className="cal-chip-row" style={{ marginBottom: 10 }}>
-                    {lists.map((l) => (
-                      <button
-                        key={l.id}
-                        className={isListSelected(l) ? 'chip chip-sm on' : 'chip chip-sm'}
-                        onClick={() => toggleList(l)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                      >
-                        <Dollar size={11} />
-                        {l.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {audience !== 'me' && (
-                  <div className="pickers">
-                    {friends.map((f, i) => {
-                      const on = selected.includes(f.email);
-                      return (
-                        <button
-                          key={f.email}
-                          className={on ? 'picker on' : 'picker'}
-                          onClick={() => setSelected(on ? selected.filter((e) => e !== f.email) : [...selected, f.email])}
-                        >
-                          <span className="avatar" style={avatarStyle(i)}>
-                            {f.name[0]}
-                            {on && <span className="tick"><Check size={11} color="#f0fae1" /></span>}
-                          </span>
-                          <b>{f.name}</b>
-                        </button>
-                      );
-                    })}
-                    <button className="picker" onClick={() => { setSheet(null); setScreen('people'); }}>
-                      <span className="avatar new"><Plus /></span>
-                      <b>Someone</b>
-                    </button>
-                  </div>
-                )}
-
-                {audience === 'them' && selectedFriends.length > 0 && !lists.some(isListSelected) && (
-                  <div style={{ margin: '-6px 0 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {selectedFriends.map((f) => {
-                      const candidates = sharedCalendarsFor(f);
-                      return (
-                        <div key={f.email}>
-                          <p className="muted" style={{ fontSize: 13, fontWeight: 600, margin: '0 0 5px' }}>{f.name}</p>
-                          {candidates.length === 0 && (
-                            <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-                              No shared calendars found (reminder sent by email)
-                            </p>
-                          )}
-                          {candidates.length === 1 && (
-                            <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-                              Goes straight to their "{candidates[0].name}" calendar — no email needed.
-                            </p>
-                          )}
-                          {candidates.length > 1 && (
-                            <select
-                              className="input"
-                              value={sharedCalChoices[f.email] || candidates[0].id}
-                              onChange={(e) => setSharedCalChoices((prev) => ({ ...prev, [f.email]: e.target.value }))}
-                            >
-                              {candidates.map((c) => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
 
                 <div className="panel">
                   <div className="field-label">When</div>

@@ -249,7 +249,7 @@ a { color: var(--a-700); text-underline-offset: 3px; }
   margin-bottom: 4px;
 }
 
-.head h2 { font-size: 28px; }
+.head h2 { font-size: 22px; white-space: nowrap; }
 .head-actions { display: flex; gap: 8px; }
 
 .banner {
