@@ -12,7 +12,6 @@ import {
 import { getFriends, addFriend, removeFriend, setFriendCalendars } from './friends';
 import { getLists, addList, removeList, addMemberToList, removeMemberFromList, removeFriendEverywhere } from './lists';
 import { hydrateFromDrive, pushToDrive } from './sync';
-import dragVideo from './drag.mp4';
 import './App.css';
 
 /* -------------------------------------------------------------- helpers */
@@ -133,6 +132,15 @@ const CheckboxIcon = ({ size = 20, color }) => (
   </svg>
 );
 
+/** iOS Safari's actual Share glyph — a box with an arrow escaping out the top. */
+const ShareGlyph = ({ size = 16, color }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke={color || 'currentColor'}>
+    <path d="M12 3v12" />
+    <path d="M8 7l4-4 4 4" />
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+  </svg>
+);
+
 const Dollar = ({ size = 13 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...stroke} stroke="var(--gold)">
     <path d="M12 2v20M16.5 6.5c0-1.7-2-3-4.5-3s-4.5 1.4-4.5 3 2 2.7 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3" />
@@ -181,7 +189,7 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installed, setInstalled] = useState(false);
   const [showInstallHelp, setShowInstallHelp] = useState(false);
-  const [showDragVideo, setShowDragVideo] = useState(false);
+  const [showInstallSteps, setShowInstallSteps] = useState(false);
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
@@ -214,7 +222,7 @@ export default function App() {
     } else {
       setShowInstallHelp((v) => !v);
     }
-    setShowDragVideo(true);
+    setShowInstallSteps(true);
   }
 
   /**
@@ -620,26 +628,54 @@ export default function App() {
     );
   }
 
-  function renderDragVideo() {
-    if (!showDragVideo) return null;
+  /** Animated walkthrough of iOS's actual Share → Add to Home Screen flow — there's no drag involved. */
+  function renderInstallSteps() {
+    if (!showInstallSteps) return null;
     return (
-      <div className="scrim" role="dialog" aria-modal="true" onClick={() => setShowDragVideo(false)}>
+      <div className="scrim" role="dialog" aria-modal="true" onClick={() => setShowInstallSteps(false)}>
         <div className="sheet" onClick={(e) => e.stopPropagation()}>
           <div className="grab" />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <button className="icon-btn" title="Close" onClick={() => setShowDragVideo(false)}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+            <button className="icon-btn" title="Close" onClick={() => setShowInstallSteps(false)}>
               <Close size={16} />
             </button>
           </div>
-          <video
-            src={dragVideo}
-            autoPlay
-            loop
-            muted
-            playsInline
-            controls
-            style={{ width: '75%', margin: '0 auto', borderRadius: 'var(--r-md)', display: 'block' }}
-          />
+          <div className="idemo-phone">
+            <div className="idemo-scene idemo-scene-1">
+              <div className="idemo-content" />
+              <div className="idemo-toolbar">
+                <span className="idemo-icon">‹</span>
+                <span className="idemo-icon">›</span>
+                <span className="idemo-icon idemo-share"><ShareGlyph size={16} /></span>
+                <span className="idemo-icon">▢</span>
+              </div>
+              <span className="idemo-tap" style={{ left: '62%', top: '84%' }} />
+            </div>
+            <div className="idemo-scene idemo-scene-2">
+              <div className="idemo-content" />
+              <div className="idemo-sheet">
+                <div className="idemo-sheet-row idemo-sheet-row-active"><Plus size={13} /> Add to Home Screen</div>
+                <div className="idemo-sheet-row">Add Bookmark</div>
+                <div className="idemo-sheet-row">Copy</div>
+              </div>
+              <span className="idemo-tap" style={{ left: '20%', top: '18%' }} />
+            </div>
+            <div className="idemo-scene idemo-scene-3">
+              <div className="idemo-content" />
+              <div className="idemo-dialog">
+                <div className="idemo-dialog-icon"><Camera size={16} color="#f5ead8" /></div>
+                <b>VideoReminders</b>
+                <div className="idemo-dialog-buttons">
+                  <span>Cancel</span>
+                  <span className="idemo-dialog-add">Add</span>
+                </div>
+              </div>
+              <span className="idemo-tap" style={{ left: '76%', top: '58%' }} />
+            </div>
+          </div>
+          <p className="muted" style={{ fontSize: 13, textAlign: 'center', margin: '14px 0 0' }}>
+            Tap Share, then "Add to Home Screen," then "Add."
+          </p>
         </div>
       </div>
     );
@@ -676,7 +712,7 @@ export default function App() {
             {renderInstall()}
           </div>
         </div>
-        {renderDragVideo()}
+        {renderInstallSteps()}
       </main>
     );
   }
@@ -1216,7 +1252,7 @@ export default function App() {
           <button className="link-btn" onClick={() => { signOut(); reset(); setScreen('signin'); }}>Sign out</button>
         </div>
       )}
-      {renderDragVideo()}
+      {renderInstallSteps()}
     </main>
   );
 }
