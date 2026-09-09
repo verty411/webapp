@@ -11,26 +11,11 @@ import {
 } from './google';
 import { getFriends, addFriend, removeFriend, setFriendCalendars } from './friends';
 import { getLists, addList, removeList, addMemberToList, removeMemberFromList, removeFriendEverywhere } from './lists';
+import { getSent, saveSent } from './sent';
 import { hydrateFromDrive, pushToDrive } from './sync';
 import './App.css';
 
 /* -------------------------------------------------------------- helpers */
-
-const SENT_KEY = 'videoshare_sent';
-
-function loadSent() {
-  try {
-    const raw = localStorage.getItem(SENT_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSent(list) {
-  localStorage.setItem(SENT_KEY, JSON.stringify(list.slice(0, 60)));
-  return list;
-}
 
 const AVATARS = [
   ['#ffe1d0', '#643312'],
@@ -182,7 +167,7 @@ export default function App() {
   const [overListId, setOverListId] = useState(null);
   const [overContactId, setOverContactId] = useState(null);
 
-  const [sent, setSent] = useState(() => loadSent());
+  const [sent, setSent] = useState(() => getSent());
   const [copied, setCopied] = useState(false);
   const inputRef = useRef(null);
 
@@ -290,22 +275,23 @@ export default function App() {
       });
   }, []);
 
-  /** Pulls a Drive backup of friends/lists into local state if it's newer or local storage is empty. */
+  /** Pulls a Drive backup of friends/lists/sent history into local state if it's newer or local storage is empty. */
   function syncFromDrive() {
     hydrateFromDrive().then((replaced) => {
       if (replaced) {
         setFriends(getFriends());
         setLists(getLists());
+        setSent(getSent());
       }
     });
   }
 
-  // Keeps the Drive backup current whenever friends or lists change locally.
+  // Keeps the Drive backup current whenever friends, lists, or sent history change locally.
   useEffect(() => {
     if (screen === 'signin') return;
     const t = setTimeout(() => pushToDrive(), 800);
     return () => clearTimeout(t);
-  }, [friends, lists, screen]);
+  }, [friends, lists, sent, screen]);
 
   /** Every Google call funnels through here so an expired hour surfaces the same way. */
   function fail(e) {
