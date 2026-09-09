@@ -634,6 +634,7 @@ export default function App() {
           <video
             src={dragVideo}
             autoPlay
+            loop
             muted
             playsInline
             controls
