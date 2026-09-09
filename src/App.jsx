@@ -12,6 +12,7 @@ import {
 import { getFriends, addFriend, removeFriend, setFriendCalendars } from './friends';
 import { getLists, addList, removeList, addMemberToList, removeMemberFromList, removeFriendEverywhere } from './lists';
 import { hydrateFromDrive, pushToDrive } from './sync';
+import dragVideo from './drag.mp4';
 import './App.css';
 
 /* -------------------------------------------------------------- helpers */
@@ -180,6 +181,7 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installed, setInstalled] = useState(false);
   const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const [showDragVideo, setShowDragVideo] = useState(false);
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl]);
@@ -212,6 +214,7 @@ export default function App() {
     } else {
       setShowInstallHelp((v) => !v);
     }
+    setShowDragVideo(true);
   }
 
   /**
@@ -617,6 +620,30 @@ export default function App() {
     );
   }
 
+  function renderDragVideo() {
+    if (!showDragVideo) return null;
+    return (
+      <div className="scrim" role="dialog" aria-modal="true" onClick={() => setShowDragVideo(false)}>
+        <div className="sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="grab" />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button className="icon-btn" title="Close" onClick={() => setShowDragVideo(false)}>
+              <Close size={16} />
+            </button>
+          </div>
+          <video
+            src={dragVideo}
+            autoPlay
+            muted
+            playsInline
+            controls
+            style={{ width: '100%', borderRadius: 'var(--r-md)', display: 'block' }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   /* ------------------------------------------------------------- render */
 
   if (screen === 'signin') {
@@ -648,6 +675,7 @@ export default function App() {
             {renderInstall()}
           </div>
         </div>
+        {renderDragVideo()}
       </main>
     );
   }
@@ -1185,6 +1213,7 @@ export default function App() {
           <button className="link-btn" onClick={() => { signOut(); reset(); setScreen('signin'); }}>Sign out</button>
         </div>
       )}
+      {renderDragVideo()}
     </main>
   );
 }
