@@ -637,7 +637,7 @@ export default function App() {
             muted
             playsInline
             controls
-            style={{ width: '100%', borderRadius: 'var(--r-md)', display: 'block' }}
+            style={{ width: '75%', margin: '0 auto', borderRadius: 'var(--r-md)', display: 'block' }}
           />
         </div>
       </div>
@@ -719,6 +719,8 @@ export default function App() {
               <span>Two taps to send it on</span>
             </div>
           </div>
+
+          {renderInstall()}
 
           {upcoming && (
             <>
@@ -1199,7 +1201,7 @@ export default function App() {
               </div>
             )}
 
-            {!installed && (
+            {!installed && sheet !== 'upload' && (
               <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--divider)' }}>
                 {renderInstall()}
               </div>
