@@ -43,6 +43,13 @@
 
 * { box-sizing: border-box; }
 
+html {
+  /* Reserves the scrollbar's width permanently, so the centered .app column
+     doesn't shift left/right on desktop as different screens toggle between
+     needing a scrollbar and not. */
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -571,8 +578,8 @@ a { color: var(--a-700); text-underline-offset: 3px; }
   border-radius: 34px 34px 0 0;
   box-shadow: var(--shadow-lg);
   padding: 12px 24px 34px;
-  max-height: 88vh;
-  max-height: 88dvh;
+  max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
 }
 
