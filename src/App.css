@@ -551,6 +551,12 @@ a { color: var(--a-700); text-underline-offset: 3px; }
 .scrim {
   position: fixed;
   inset: 0;
+  /* vh is fixed to the largest possible viewport in Safari, so a fixed
+     overlay sized against it can sit under the address bar when it's
+     expanded. dvh tracks the viewport Safari is actually showing right
+     now; the plain vh line is just a fallback for browsers without it. */
+  height: 100vh;
+  height: 100dvh;
   background: rgba(46, 43, 37, 0.5);
   display: flex;
   align-items: flex-end;
@@ -565,7 +571,8 @@ a { color: var(--a-700); text-underline-offset: 3px; }
   border-radius: 34px 34px 0 0;
   box-shadow: var(--shadow-lg);
   padding: 12px 24px 34px;
-  max-height: 92vh;
+  max-height: 88vh;
+  max-height: 88dvh;
   overflow-y: auto;
 }
 
