@@ -721,8 +721,6 @@ export default function App() {
             </div>
           </div>
 
-          {renderInstall()}
-
           {upcoming && (
             <>
               <div className="section-head"><h3>Coming up</h3></div>
@@ -762,6 +760,8 @@ export default function App() {
               ))}
             </div>
           )}
+
+          {renderInstall()}
         </div>
       )}
 
